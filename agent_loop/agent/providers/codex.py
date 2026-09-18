@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 
-from agent_loop.project.subprocesses import invoke_agent_loop_subprocess
+from agent_loop.agent.providers import AgentLoopApplication
+from agent_loop.agent.providers import invoke_agent_loop_application
 
 DEFAULT_CODEX_COMMAND = "codex exec"
 
@@ -25,26 +25,25 @@ def run_agent_loop(
     agent_command: str,
     remaining_argv: list[str],
     *,
+    application: AgentLoopApplication,
     commit_msg: str | None = None,
 ) -> int:
-    """Delegate execution to the compatible orchestrator entrypoint."""
-    return invoke_agent_loop_subprocess(
+    """Execute the compatible application lifecycle in-process."""
+    return invoke_agent_loop_application(
+        application,
         agent_command,
         remaining_argv,
         commit_msg=commit_msg,
     )
 
 
-def main() -> int:
-    """Forward arguments to the orchestrator using Codex."""
-    wrapper_args, remaining_argv = parse_codex_wrapper_args(sys.argv[1:])
+def main(argv: list[str], application: AgentLoopApplication) -> int:
+    """Forward explicit arguments to the application using Codex."""
+    wrapper_args, remaining_argv = parse_codex_wrapper_args(argv)
     agent_command = os.environ.get("SHIPII_CODEX_COMMAND", DEFAULT_CODEX_COMMAND)
     return run_agent_loop(
         agent_command,
         remaining_argv,
+        application=application,
         commit_msg=wrapper_args.commit_msg,
     )
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
-import sys
 
+from agent_loop.agent.providers import AgentLoopApplication
+from agent_loop.agent.providers import invoke_agent_loop_application
 from agent_loop.domain.exit_codes import AGENT_INEFFECTIVE_EXIT_CODE
-from agent_loop.project.subprocesses import invoke_agent_loop_subprocess
 
 DEFAULT_CURSOR_COMMAND = "cursor-agent -p --trust --force --output-format text"
 CURSOR_MODEL_ENV = "SHIPII_CURSOR_MODEL"
@@ -92,22 +92,25 @@ def run_agent_loop(
     agent_command: str,
     remaining_argv: list[str],
     *,
+    application: AgentLoopApplication,
     commit_msg: str | None = None,
 ) -> int:
-    """Delegate execution to the compatible orchestrator entrypoint."""
-    return invoke_agent_loop_subprocess(
+    """Execute the compatible application lifecycle in-process."""
+    return invoke_agent_loop_application(
+        application,
         agent_command,
         remaining_argv,
         commit_msg=commit_msg,
     )
 
 
-def main() -> int:
-    """Forward arguments to Cursor and retry once with its automatic model."""
-    wrapper_args, remaining_argv = parse_cursor_wrapper_args(sys.argv[1:])
+def main(argv: list[str], application: AgentLoopApplication) -> int:
+    """Forward explicit arguments and retry once with Cursor's automatic model."""
+    wrapper_args, remaining_argv = parse_cursor_wrapper_args(argv)
     exit_code = run_agent_loop(
         resolve_cursor_agent_command(wrapper_args),
         remaining_argv,
+        application=application,
         commit_msg=wrapper_args.commit_msg,
     )
     configured_model = explicit_cursor_model(wrapper_args)
@@ -124,9 +127,6 @@ def main() -> int:
     return run_agent_loop(
         build_fallback_cursor_agent_command(wrapper_args),
         remaining_argv,
+        application=application,
         commit_msg=wrapper_args.commit_msg,
     )
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
