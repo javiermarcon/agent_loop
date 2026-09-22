@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import Protocol
 
+from agent_loop.application.resume_invocation import ResumeInvocationConfiguration
 from agent_loop.domain.errors import AgentLoopError
 from agent_loop.domain.errors import ResumeArgumentError
 from agent_loop.domain.exit_codes import INVALID_RESUME_ARGUMENTS_EXIT_CODE
@@ -95,9 +96,38 @@ class RunLock(Protocol):
 class ResumeConfiguration:
     """Result of restoring resume controls before runner dispatch."""
 
-    exit_code: int | None
-    lock: RunLock | None
+    outcome: ResumeInvocationConfiguration[RunLock]
     run_context: RunContext
+
+    @classmethod
+    def from_values(
+        cls,
+        exit_code: int | None,
+        lock: RunLock | None,
+        run_context: RunContext,
+    ) -> ResumeConfiguration:
+        """Translate the legacy pair into one validated ownership outcome."""
+        if exit_code is not None and lock is not None:
+            message = "Resume configuration cannot combine a terminal exit with a transferred lock."
+            raise ValueError(message)
+        outcome: ResumeInvocationConfiguration[RunLock]
+        if exit_code is not None:
+            outcome = ResumeInvocationConfiguration[RunLock].terminal(exit_code)
+        elif lock is not None:
+            outcome = ResumeInvocationConfiguration[RunLock].transferred(lock)
+        else:
+            outcome = ResumeInvocationConfiguration[RunLock].continue_without_ownership()
+        return cls(outcome, run_context)
+
+    @property
+    def exit_code(self) -> int | None:
+        """Return the terminal exit when resume coordination stopped."""
+        return self.outcome.exit_code
+
+    @property
+    def lock(self) -> RunLock | None:
+        """Return ownership transferred to lifecycle execution."""
+        return self.outcome.lock
 
 
 class LifecycleOperations(Protocol):

@@ -113,10 +113,13 @@ class _InvocationFake:
         config: str,
     ) -> resume_invocation.ResumeInvocationConfiguration[str]:
         self.events.append(f"lock:{request}:{candidate}:{store}:{config}")
-        return resume_invocation.ResumeInvocationConfiguration(
-            self.acquired_exit,
-            self.lock,
-        )
+        if self.acquired_exit is not None:
+            return resume_invocation.ResumeInvocationConfiguration.terminal(
+                self.acquired_exit,
+            )
+        if self.lock is None:
+            return resume_invocation.ResumeInvocationConfiguration.continue_without_ownership()
+        return resume_invocation.ResumeInvocationConfiguration.transferred(self.lock)
 
     def collaborators(
         self,
@@ -149,6 +152,20 @@ class _InvocationFake:
         )
 
 
+@dataclass
+class _LockCapability:
+    """Record concrete release attempts for ownership contract tests."""
+
+    release_error: OSError | None = None
+    release_count: int = 0
+
+    def release(self) -> None:
+        """Release once or expose the configured infrastructure failure."""
+        self.release_count += 1
+        if self.release_error is not None:
+            raise self.release_error
+
+
 def _configure(
     fake: _InvocationFake,
     *,
@@ -165,14 +182,75 @@ def _configure(
     )
 
 
+def test_resume_configuration_states_are_exclusive() -> None:
+    """A resume outcome cannot combine terminal exit and transferred ownership."""
+    lock = _LockCapability()
+
+    continuing: resume_invocation.ResumeInvocationConfiguration[_LockCapability] = (
+        resume_invocation.ResumeInvocationConfiguration.continue_without_ownership()
+    )
+    terminal: resume_invocation.ResumeInvocationConfiguration[_LockCapability] = (
+        resume_invocation.ResumeInvocationConfiguration.terminal(_POST_LOCK_EXIT)
+    )
+    transferred = resume_invocation.ResumeInvocationConfiguration.transferred(lock)
+
+    assert continuing.disposition is resume_invocation.ResumeInvocationDisposition.CONTINUE
+    assert continuing.exit_code is None
+    assert continuing.lock is None
+    assert terminal.disposition is resume_invocation.ResumeInvocationDisposition.TERMINAL
+    assert terminal.exit_code == _POST_LOCK_EXIT
+    assert terminal.lock is None
+    assert transferred.disposition is resume_invocation.ResumeInvocationDisposition.TRANSFERRED
+    assert transferred.exit_code is None
+    assert transferred.lock is lock
+    with pytest.raises(ValueError, match="terminal exit.*lock"):
+        resume_invocation.ResumeInvocationConfiguration(
+            resume_invocation.ResumeInvocationDisposition.TERMINAL,
+            _POST_LOCK_EXIT,
+            lock,
+        )
+
+
+def test_acquired_resume_ownership_transfers_exactly_once() -> None:
+    """Transfer ends adapter ownership without releasing the lifecycle capability."""
+    lock = _LockCapability()
+    ownership = resume_invocation.ResumeLockOwnership.acquired(lock)
+
+    assert ownership.held_lock is lock
+    assert ownership.transfer() is lock
+    assert ownership.state is resume_invocation.ResumeLockOwnershipState.TRANSFERRED
+    assert lock.release_count == 0
+    with pytest.raises(RuntimeError, match="already transferred"):
+        ownership.transfer()
+
+
+def test_acquired_resume_ownership_release_is_single_and_failure_safe() -> None:
+    """Release transitions only after concrete cleanup succeeds."""
+    lock = _LockCapability()
+    ownership = resume_invocation.ResumeLockOwnership.acquired(lock)
+
+    ownership.release()
+
+    assert ownership.state is resume_invocation.ResumeLockOwnershipState.RELEASED
+    assert lock.release_count == 1
+    with pytest.raises(RuntimeError, match="already released"):
+        ownership.release()
+    assert lock.release_count == 1
+
+    release_error = OSError("release unavailable")
+    failing_lock = _LockCapability(release_error=release_error)
+    failing_ownership = resume_invocation.ResumeLockOwnership.acquired(failing_lock)
+    with pytest.raises(OSError, match="release unavailable"):
+        failing_ownership.release()
+    assert failing_ownership.state is resume_invocation.ResumeLockOwnershipState.ACQUIRED
+    assert failing_lock.release_count == 1
+
+
 def test_no_resume_stops_without_catalog_store_or_lock() -> None:
     """A catalog no-op prevents every later stage and side effect."""
     fake = _InvocationFake(catalog=None)
 
-    assert _configure(fake) == resume_invocation.ResumeInvocationConfiguration(
-        None,
-        None,
-    )
+    assert _configure(fake) == resume_invocation.ResumeInvocationConfiguration.continue_without_ownership()
     assert fake.events == ["catalog:explicit-resume:target"]
 
 
@@ -180,7 +258,9 @@ def test_list_resumable_is_terminal_and_read_only() -> None:
     """Listing emits through its adapter and never prepares or locks a run."""
     fake = _InvocationFake()
 
-    assert _configure(fake, list_requested=True) == (resume_invocation.ResumeInvocationConfiguration(_LIST_EXIT, None))
+    assert _configure(fake, list_requested=True) == (
+        resume_invocation.ResumeInvocationConfiguration.terminal(_LIST_EXIT)
+    )
     assert fake.events == [
         "catalog:explicit-resume:target",
         "list:catalog:target",
@@ -194,7 +274,9 @@ def test_resume_orders_all_collaborators_and_returns_lifecycle_lock(
     """Explicit and latest resume preserve the complete observable phase order."""
     fake = _InvocationFake()
 
-    assert _configure(fake, request=invocation_kind) == (resume_invocation.ResumeInvocationConfiguration(None, "lock"))
+    assert _configure(fake, request=invocation_kind) == (
+        resume_invocation.ResumeInvocationConfiguration.transferred("lock")
+    )
     assert fake.events == [
         f"catalog:{invocation_kind}:target",
         f"prepare:{invocation_kind}:catalog:target",
@@ -270,10 +352,14 @@ def test_sensitive_and_post_lock_terminal_paths_preserve_adapter_ownership(
         lock=expected_lock,
     )
 
-    assert _configure(fake) == resume_invocation.ResumeInvocationConfiguration(
-        expected_exit,
-        expected_lock,
-    )
+    if expected_exit is not None:
+        expected: resume_invocation.ResumeInvocationConfiguration[str] = (
+            resume_invocation.ResumeInvocationConfiguration.terminal(expected_exit)
+        )
+    else:
+        assert expected_lock is not None
+        expected = resume_invocation.ResumeInvocationConfiguration.transferred(expected_lock)
+    assert _configure(fake) == expected
     lock_events = [event for event in fake.events if event.startswith("lock:")]
     assert len(lock_events) == (0 if prelock_exit is not None else 1)
 

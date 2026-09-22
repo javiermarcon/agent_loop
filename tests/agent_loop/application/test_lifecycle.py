@@ -121,7 +121,7 @@ class _Operations:
         self.events.append("configure_resume")
         if self.failure == "configure":
             raise AgentLoopError(_INVALID_RESUME_STATE)
-        return ResumeConfiguration(self.resume_exit, self.lock, context)
+        return ResumeConfiguration.from_values(self.resume_exit, self.lock, context)
 
     def require_target_repo_root(self, context: RunContext) -> Path:
         """Require the execution target for non-preview modes."""
@@ -245,6 +245,18 @@ def test_lifecycle_terminal_resume_exit_skips_dispatch_and_validation_for_listin
     assert "run_multi" not in operations.events
 
 
+def test_resume_configuration_rejects_exit_with_transferred_lock(tmp_path: Path) -> None:
+    """Reject the legacy combination that would return without releasing ownership."""
+    context = _Context(tmp_path, tmp_path, tmp_path)
+
+    with pytest.raises(ValueError, match="terminal exit.*transferred lock"):
+        ResumeConfiguration.from_values(
+            _RESUME_EXIT,
+            _Lock([]),
+            context,
+        )
+
+
 @pytest.mark.parametrize(
     ("failure", "expected_exit", "expected_message"),
     [
@@ -282,6 +294,25 @@ def test_lifecycle_releases_resume_lock_after_runner_success_or_failure(
     assert run_lifecycle((), operations) == expected_exit
     assert operations.events[-1] == "release"
     assert operations.events.count("release") == 1
+
+
+def test_lifecycle_release_failure_propagates_after_one_attempt(tmp_path: Path) -> None:
+    """Preserve cleanup failure as the terminal lifecycle error without retrying."""
+    operations = _Operations(tmp_path)
+    release_calls = 0
+
+    class _FailingLock:
+        def release(self) -> None:
+            nonlocal release_calls
+            release_calls += 1
+            message = "release unavailable"
+            raise OSError(message)
+
+    operations.lock = _FailingLock()
+
+    with pytest.raises(OSError, match="release unavailable"):
+        run_lifecycle((), operations)
+    assert release_calls == 1
 
 
 def test_lifecycle_uses_explicit_argv_without_mutating_process_state(
