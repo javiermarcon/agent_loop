@@ -106,6 +106,14 @@ def test_capability_id_rejects_blank_values() -> None:
         CapabilityId("   ")
 
 
+def test_capability_id_rejects_padded_values() -> None:
+    """CapabilityId rejects non-empty values with leading or trailing spaces."""
+    with pytest.raises(ValueError, match="leading or trailing"):
+        CapabilityId(" filesystem.read")
+    with pytest.raises(ValueError, match="leading or trailing"):
+        CapabilityId("filesystem.read ")
+
+
 def test_requirement_rejects_empty_mandatory_axes() -> None:
     """A requirement without mandatory axes is invalid."""
     with pytest.raises(ValueError, match="mandatory_axes"):

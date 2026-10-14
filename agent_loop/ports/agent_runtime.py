@@ -122,12 +122,9 @@ class AgentRuntime(Protocol):
     @property
     def identity(self) -> RuntimeIdentity:
         """Return the stable runtime identity for this adapter."""
-        ...
 
     def discover(self, context: DiscoveryContext) -> RuntimeInventory:
         """Build an immutable capability inventory for ``context``."""
-        ...
 
     def execute(self, request: AgentExecutionRequest) -> AgentExecutionResult:
         """Execute ``request`` and return a normalized result."""
-        ...

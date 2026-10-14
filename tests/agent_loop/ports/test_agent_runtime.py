@@ -219,3 +219,33 @@ def test_request_rejects_empty_task() -> None:
             mutation_policy=MutationPolicy(allow_workspace_mutation=False),
             permission_policy=PermissionPolicy(allow_network=False),
         )
+
+
+def test_request_rejects_empty_working_directory() -> None:
+    """Execution requests fail closed on blank working directories."""
+    with pytest.raises(ValueError, match="working_directory"):
+        AgentExecutionRequest(
+            task="bounded fixture task",
+            strategy=ExecutionStrategy.PLAN,
+            model=None,
+            required_capabilities=(_requirement(),),
+            working_directory="   ",
+            mutation_policy=MutationPolicy(allow_workspace_mutation=False),
+            permission_policy=PermissionPolicy(allow_network=False),
+        )
+
+
+def test_runtime_identity_rejects_blank_values() -> None:
+    """RuntimeIdentity fails closed on empty or whitespace-only ids."""
+    with pytest.raises(ValueError, match="runtime_id"):
+        RuntimeIdentity("")
+    with pytest.raises(ValueError, match="runtime_id"):
+        RuntimeIdentity("   ")
+
+
+def test_discovery_context_rejects_blank_working_directory() -> None:
+    """DiscoveryContext fails closed on blank working directories."""
+    with pytest.raises(ValueError, match="working_directory"):
+        DiscoveryContext(working_directory="")
+    with pytest.raises(ValueError, match="working_directory"):
+        DiscoveryContext(working_directory="   ")
