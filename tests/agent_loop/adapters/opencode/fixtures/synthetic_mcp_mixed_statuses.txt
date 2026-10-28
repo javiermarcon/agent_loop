@@ -1,0 +1,6 @@
+✓ docs    connected (OAuth)
+○ cache    disabled
+○ pending    not initialized
+⚠ private    needs authentication
+✗ broken    failed
+✗ legacy    needs client registration

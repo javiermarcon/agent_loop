@@ -1,0 +1,6 @@
+cursor-acp/auto
+cursor-acp/claude-4-sonnet
+cursor-acp/claude-4.5-sonnet
+opencode/gpt-5
+anthropic/claude-sonnet-4
+ollama/gemma3:4b

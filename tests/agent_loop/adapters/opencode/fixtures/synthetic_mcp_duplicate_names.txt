@@ -1,0 +1,3 @@
+✓ docs    connected
+✓ cache   disabled
+✓ docs    failed

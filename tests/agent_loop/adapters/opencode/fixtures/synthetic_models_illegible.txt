@@ -1,0 +1,3 @@
+Models available:
+- not a provider slash model line
+please configure providers

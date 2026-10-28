@@ -1,0 +1,4 @@
+[
+  {"id": "build/agent", "name": "Build"},
+  {"id": "plan", "name": "Plan"}
+]

@@ -1,0 +1,6 @@
+
+not-a-model
+provider-only/
+/model-only
+ok/provider/model/extra
+valid/model-id

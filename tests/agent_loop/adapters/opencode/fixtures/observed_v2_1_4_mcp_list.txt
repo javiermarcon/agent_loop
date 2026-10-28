@@ -1,0 +1,6 @@
+✓ context7    connected
+✓ github      connected
+✓ notion      connected
+✓ playwright  connected
+✓ postgresql  connected
+✓ railway     connected

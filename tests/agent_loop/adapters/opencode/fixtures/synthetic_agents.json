@@ -1,0 +1,14 @@
+[
+  {
+    "id": "build",
+    "name": "Build",
+    "mode": "primary",
+    "hidden": false
+  },
+  {
+    "id": "plan",
+    "name": "Plan",
+    "mode": "primary",
+    "hidden": false
+  }
+]
