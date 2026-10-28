@@ -1,0 +1,7 @@
+demo-http:
+  Scope: Project config (shared via .mcp.json)
+  Status: ⏸ Pending approval (run `claude` to approve)
+  Type: http
+  URL: https://example.invalid/mcp
+
+To remove this server, run: claude mcp remove demo-http -s project

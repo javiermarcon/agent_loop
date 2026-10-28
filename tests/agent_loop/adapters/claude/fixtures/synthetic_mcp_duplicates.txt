@@ -1,0 +1,4 @@
+Checking MCP server health…
+
+dup: https://example.invalid/a (HTTP) - ✓ Connected
+dup: https://example.invalid/b (HTTP) - ✓ Connected

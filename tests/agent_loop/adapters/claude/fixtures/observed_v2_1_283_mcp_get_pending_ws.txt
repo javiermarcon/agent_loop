@@ -1,0 +1,5 @@
+demo-ws:
+  Scope: Project config (shared via .mcp.json)
+  Status: ⏸ Pending approval (run `claude` to approve)
+
+To remove this server, run: claude mcp remove demo-ws -s project

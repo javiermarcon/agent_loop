@@ -1,0 +1,4 @@
+Checking MCP server health…
+
+ok: https://example.invalid (HTTP) - ✓ Connected
+unexpected trailing prose

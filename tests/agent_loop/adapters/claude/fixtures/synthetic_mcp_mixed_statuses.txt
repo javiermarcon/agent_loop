@@ -1,0 +1,10 @@
+Checking MCP server health…
+
+docs: https://example.invalid/docs (HTTP) - ✓ Connected
+cache: https://example.invalid/cache (SSE) - ⊘ Disabled for this project (re-enable via /mcp)
+private: https://example.invalid/private (HTTP) - ! Needs authentication
+broken: https://example.invalid/broken (HTTP) - × Failed to connect
+denied: https://example.invalid/denied (HTTP) - × Rejected (see disabledMcpjsonServers in settings)
+proxy: https://example.invalid/proxy - ✓ Connected
+stdio-echo: echo hello - ✓ Connected
+tools-bad: https://example.invalid/tools (HTTP) - ! Connected · tools fetch failed

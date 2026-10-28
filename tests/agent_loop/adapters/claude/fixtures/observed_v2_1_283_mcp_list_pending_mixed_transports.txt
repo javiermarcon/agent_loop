@@ -1,0 +1,4 @@
+Checking MCP server health…
+
+demo-sse: https://example.invalid/sse (SSE) - ⏸ Pending approval (run `claude` to approve)
+demo-stdio: true  - ⏸ Pending approval (run `claude` to approve)
