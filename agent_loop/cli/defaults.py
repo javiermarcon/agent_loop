@@ -8,16 +8,16 @@ CLI_DESCRIPTION = (
 )
 CLI_EPILOG = (
     "Ejemplos de uso:\n"
-    '  python3 scripts/agent_loop.py --requirement "Implementá X"\n'
-    "  python3 scripts/agent_loop.py --requirement-file prompts/issue.md\n"
-    '  python3 scripts/agent_loop.py --notion-url "https://www.notion.so/..."\n'
-    "  python3 scripts/agent_loop.py --requirement-clipboard\n"
+    '  python3 -m agent_loop --requirement "Implementá X"\n'
+    "  python3 -m agent_loop --requirement-file prompts/issue.md\n"
+    '  python3 -m agent_loop --notion-url "https://www.notion.so/..."\n'
+    "  python3 -m agent_loop --requirement-clipboard\n"
     "\n"
     "Revisión de plan compuesto (sin agente ni gates):\n"
-    "  python3 scripts/agent_loop.py --multi-requirement --dry-run \\\n"
+    "  python3 -m agent_loop --multi-requirement --dry-run \\\n"
     "    --requirement-file prompts/plan.md\n"
     "\n"
-    "Guía operativa: scripts/README_AGENT_LOOP.md"
+    "Guía operativa: README.md"
 )
 CLI_HELP = {
     "clipboard": "Lee el requerimiento desde el portapapeles del host.",

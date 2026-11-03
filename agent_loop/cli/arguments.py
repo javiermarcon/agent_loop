@@ -308,7 +308,7 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--no-stream-checks",
         action="store_true",
-        help=("Desactiva la salida en vivo de pre-commit y scripts/run_quality_checks.py."),
+        help=("Desactiva la salida en vivo de pre-commit y del runner de calidad."),
     )
     parser.add_argument(
         "--stream-agent-output",
@@ -331,7 +331,7 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
         "--check-timeout-seconds",
         type=int,
         default=DEFAULT_CHECK_TIMEOUT_SECONDS,
-        help=(f"Timeout de scripts/run_quality_checks.py en segundos. Default: {DEFAULT_CHECK_TIMEOUT_SECONDS}."),
+        help=(f"Timeout del runner de calidad en segundos. Default: {DEFAULT_CHECK_TIMEOUT_SECONDS}."),
     )
     parser.add_argument(
         "--log-dir",

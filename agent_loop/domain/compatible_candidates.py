@@ -193,6 +193,6 @@ def _evaluate_binding(
 
     if rejection is not None:
         return (rejection,)
-    # Missing native refs are rejected above; this narrows Optional for callers.
-    assert native_ref is not None
+    if native_ref is None:
+        return (f"rejected={key}:native_model_ref_missing",)
     return native_ref

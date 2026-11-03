@@ -1,1 +1,1 @@
-"""Internal package for the Shipii agent-loop orchestrator."""
+"""Agent-loop control plane and adapters."""
