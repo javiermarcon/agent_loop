@@ -425,3 +425,29 @@ def test_resolve_compatible_candidates_is_not_wired_into_planning_bridge() -> No
     assert "resolve_compatible_candidates" not in bridge
     assert "RuntimeInventory" not in bridge
     assert "AgentRuntime" not in bridge
+
+
+def test_project_profiles_and_skills_avoid_forbidden_dependencies() -> None:
+    """S20 project profiles/skills must not import adapters/application/scripts."""
+    project_root = _PACKAGE_ROOT / "project"
+    forbidden = (
+        "agent_loop.adapters",
+        "agent_loop.application",
+        "agent_loop.cli",
+        "scripts",
+        "apps",
+        "django",
+    )
+    offenders: list[str] = []
+    for path in sorted(project_root.rglob("*.py")):
+        offenders.extend(_offender_lines(path, forbidden))
+    assert offenders == []
+
+
+def test_domain_does_not_import_project_profiles_or_skills() -> None:
+    """Domain stays free of ProjectProfile/Skills (ADR-039 / ADR-052)."""
+    domain_root = _PACKAGE_ROOT / "domain"
+    offenders: list[str] = []
+    for path in sorted(domain_root.rglob("*.py")):
+        offenders.extend(_offender_lines(path, ("agent_loop.project",)))
+    assert offenders == []
