@@ -27,10 +27,13 @@ PRODUCTION_REQUEST_CTORS = frozenset(
 )
 TEST_REQUEST_CTORS = frozenset(
     {
-        "tests/agent_loop/application/test_execution_request_builder.py",
-        "tests/agent_loop/ports/test_agent_runtime.py",
         "tests/agent_loop/adapters/claude/test_runtime.py",
         "tests/agent_loop/adapters/opencode/test_runtime.py",
+        "tests/agent_loop/adapters/opencode_server/test_identity.py",
+        "tests/agent_loop/adapters/opencode_server/test_integration.py",
+        "tests/agent_loop/adapters/opencode_server/test_runtime.py",
+        "tests/agent_loop/application/test_execution_request_builder.py",
+        "tests/agent_loop/ports/test_agent_runtime.py",
     },
 )
 

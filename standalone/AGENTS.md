@@ -20,7 +20,8 @@ target repository.
 - Do not use the Agent Loop interpreter to run target tools. Use the target
   project's virtualenv.
 - Do not add support for non-Django ecosystems in this stage.
-- Do not implement OpenCode server integration here; that is S22.
+- OpenCode Server integration (S22) is vendored from the canonical package; do not
+  modify or reimplement it independently here.
 
 ## Security invariants
 
