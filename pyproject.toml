@@ -1,0 +1,210 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-loop-autonomous"
+version = "0.1.0"
+description = "Autonomous Agent Loop for external Django repositories"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = ["PyYAML>=6.0"]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.10",
+    "pylint>=3.0",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff==0.12.9",
+]
+
+[project.scripts]
+agent-loop = "agent_loop.autonomy.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agent_loop*"]
+
+# ==== pytest ====
+[tool.pytest.ini_options]
+testpaths = ["tests/agent_loop"]
+python_files = ["test_*.py"]
+pythonpath = ["."]
+addopts = "-q"
+
+# ==== Coverage ====
+[tool.coverage.run]
+source = ["agent_loop"]
+omit = [
+    "**/__init__.py",
+    "**/tests/**",
+    "**/conftest.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 92
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+
+# ==== Ruff ====
+[tool.ruff]
+target-version = "py312"
+line-length = 119
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.ruff.lint]
+select = [
+    "F",
+    "E",
+    "W",
+    "C90",
+    "I",
+    "N",
+    "UP",
+    "YTT",
+    "ASYNC",
+    "S",
+    "BLE",
+    "FBT",
+    "B",
+    "A",
+    "COM",
+    "C4",
+    "DTZ",
+    "T10",
+    "EM",
+    "EXE",
+    "FA",
+    "ISC",
+    "ICN",
+    "G",
+    "INP",
+    "PIE",
+    "T20",
+    "PYI",
+    "PT",
+    "Q",
+    "RSE",
+    "RET",
+    "SLF",
+    "SLOT",
+    "SIM",
+    "TID",
+    "TC",
+    "INT",
+    "PTH",
+    "ERA",
+    "PD",
+    "PGH",
+    "PL",
+    "TRY",
+    "FLY",
+    "PERF",
+    "RUF",
+]
+ignore = [
+    "S101",  # asserts are the test contract
+    "RUF012",  # mutable class attributes are intentional in frozen dataclasses
+    "SIM102",  # explicit nesting is sometimes clearer
+    "SIM108",  # explicit branches are sometimes clearer
+    "UP038",  # isinstance tuple form is intentionally retained
+]
+extend-unsafe-fixes = ["UP038"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+# ==== mypy ====
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+ignore_missing_imports = true
+incremental = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+exclude = "(\\.venv|build|dist)/"
+
+# ==== pylint ====
+[tool.pylint.main]
+py-version = "3.12"
+jobs = 0
+init-hook = 'import sys; sys.path.insert(0, ".")'
+
+[tool.pylint.format]
+max-line-length = 119
+
+[tool.pylint.typecheck]
+extension-pkg-allow-list = ["behave", "behave.api"]
+
+[tool.pylint.messages_control]
+disable = [
+    "line-too-long",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-branches",
+    "too-many-statements",
+    "too-many-lines",
+    "too-many-instance-attributes",
+    "too-many-public-methods",
+    "too-many-return-statements",
+    "too-many-nested-blocks",
+    "duplicate-code",
+    "fixme",
+    "import-outside-toplevel",
+    "invalid-name",
+    "attribute-defined-outside-init",
+    "import-error",
+    "no-member",
+    "unused-argument",
+    "too-many-ancestors",
+    "abstract-method",
+    "arguments-differ",
+    "arguments-renamed",
+    "invalid-str-returned",
+    "not-an-iterable",
+    "unsubscriptable-object",
+    "not-a-mapping",
+    "super-init-not-called",
+    "try-except-raise",
+    "pointless-string-statement",
+    "no-else-return",
+    "no-else-raise",
+    "useless-parent-delegation",
+    "consider-using-with",
+    "consider-using-get",
+    "comparison-with-callable",
+    "wrong-import-position",
+    "wrong-import-order",
+    "ungrouped-imports",
+    "reimported",
+]
+
+[tool.pylint.design]
+max-args = 12
+max-parents = 20
+
+[tool.pylint.similarities]
+min-similarity-lines = 12

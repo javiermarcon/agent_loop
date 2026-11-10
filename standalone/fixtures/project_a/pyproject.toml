@@ -1,9 +1,0 @@
-[project]
-name = "project-a"
-requires-python = ">=3.12"
-
-[tool.ruff]
-line-length = 100
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]

@@ -1,0 +1,31 @@
+old	new	date	subject
+a073aaecac0bbdbb67365095492b721fd1ad0bb6	5a1bcffca5964b77df940b175e1f47beee37d57c	2026-09-16	fix: corregidos archivos .md para IA
+dd2a6e67272fb7f37f79603bdee2284dcdedc8a0	7b2e3239e1545f56259b116b06d0d51aea5c67b9	2026-09-16	fix: migrar agent_loop desde la referencia sin copiar basura
+bf47155a073b9461de8a26e9850a926d0ff3b4a3	40b969c88415443aa503f4025c274e57ee7a1558	2026-09-17	refactor: move agent loop CLI ownership to canonical package
+0367d670205891039fd17c8c17fd1f593ef44e7f	624a4eba55a67104b652a48c954c292010f5b17e	2026-09-18	refactor: move agent loop lifecycle ownership to application
+0946efc01fcabbf449c821874ee6087e1e9e6336	647d916e12d2453e8ca71401598fbe7a2cbc0157	2026-09-18	refactor: run agent providers in-process
+085ab687817fb0fa7bce570fcb5dbc2123004041	848346ef8953df525bd256c1eb8045e008c00403	2026-09-19	refactor: extract pure resume compatibility policy
+2cdfd845165339fb474af4cc38fbf362735ccbf1	25891598255bf5770e4de6221acc166f66a74cf2	2026-09-19	refactor: extract pure resume config migration policy
+32c1e01e9ea9c317edb606c845cc7a50de0e11b2	6887210c88a62263cb6b37dfa4061aa3feeae717	2026-09-20	refactor: extract resume candidate selection policy
+6dee2dd7930392789bf03561d124aa9440eb4ed4	7797508f3671bb63c9237c158c6f941c3c4d63f3	2026-09-20	refactor: extract resume candidate preparation coordinator
+46a91e3753b8107cf8a92a507219480f33a4821c	82c917e6c37e1a9508662e8816b2ed2a395d6202	2026-09-21	refactor: separate resume repair policy from persistence
+73952e0a393753b6971461c6cbc2bc354ecd527d	07620ea70d4e5fc0e5c1219682d5ae09a4db74c4	2026-09-21	refactor: extract resume invocation coordinator
+869190c90d0b05eb7c9e438446d39882716914e8	dfb3d39db572d33591414318f284d44b4838437a	2026-09-22	refactor: make resume lock ownership explicit
+ab4226d2c2518bccffcc1df52ade431b9fc21101	6547b49843825def7be590241026abe9c3300787	2026-10-13	feat: add effective capability vocabulary for control-plane routing
+d85e9ece79de75eedb41b81054c296ffb08da7f3	4b956beb8682b777a59e206b7cb84f06f7829f51	2026-10-13	feat: define minimal AgentRuntime discover/execute port
+16f061d1d2576f4889da18ed8ca5de101ee64e4f	ac410f15c1e1389f4b9d380ce282ad05a044331f	2026-10-13	test: close capability and AgentRuntime validation coverage gaps
+63f4b6f609f867241d2dd29970e7a87345f165b7	3aee3be29d52d1c5eee5749ef2d8d8b4ce2ce5ee	2026-10-28	feat: add fail-closed OpenCode CLI discovery adapter
+50ca0e1dc11423c5119cfdfe37a33803447a70c4	1013efd3a1f2b037325d153b33b1337c18a7606d	2026-10-28	feat: add fail-closed Claude Code CLI discovery adapter
+947967cc36b22e3f0b0233477af7e51b359dc4a3	c027151d4dbd45c8fdf20a96336c9eaead327183	2026-10-28	feat: add deterministic TaskAssessment and capability derivation
+ac02e811f4caa0cf07ffaa2bf14c5153c8729f0b	27e551a9c4e1b910f1263e59888297864406f036	2026-10-29	feat: add ModelProfile and RuntimeModelProfile domain contracts
+18831ee7e5058a1c77c5fb59b96ed1d55ddec589	65c5fdb303a19c6968cb9e4bc49eb7d5bf694de6	2026-10-29	feat: add deterministic model profile catalogs
+bedc31ee24db7055504ac24aff5e1c913839e1c1	96569febcb0469454d38a36b9370fd20556f91de	2026-10-29	test: harden ModelProfile contract and import isolation coverage
+9cfcf3853c29516b3afbc56a244e02dd28d9c45d	fee4aee1c7ed653a8df1d08a806e65500be700dd	2026-10-29	feat: add deterministic compatible model candidate resolution
+7dbf788afbc4582d59e138e68d0eaf3c91ee88e2	f4cfe9d2f1601bb9b369d2fc191c6ab1a6eaaa2b	2026-10-29	feat: add control-plane WorkItem domain contract
+dfa179755cc73748386eacaa6e9bfcd66d396fc1	7ff04b4dd7625ad9f67f55cc2ede8fca689a29f5	2026-10-30	feat: add WorkItem request gate and deterministic DAG planning
+80fc4c8dc21dcf52969fd901af9a83565de332ef	c225c594997c07e8f2029c9acf6109e4382cb8cd	2026-10-30	test: harden agent_loop package boundary AST import detection
+2ee0f00809edf80a8c6c76a71270ed89ebe2ef38	8920a813ba9fb72fc3859a090634a050d106b015	2026-11-03	feat(agent-loop): add project profiles and skill compatibility
+9eed7425379f67826439670001882e4567654c98	1465d7ecd855032d8aefe052d70ff10e0be7de01	2026-11-03	chore fix: corregido path de carpeta prompts
+908bd751292845a9b7fa8e3d9461c0d1f71ecc90	11d317f82b2d271c3a8c705396415f6482c0ddc4	2026-11-09	feat(runtime): add OpenCode Server adapter (S22)
+9ca35b9cabe8dd3411b44547b299c32491bd36a0	048a92d683f7846516c3b77e430e139bca5fe9d7	2026-11-09	feat(control-plane): add operational routing and failure escalation (S13-S14)
+de91bf807f815e77f2e4cd3d8b32f0b4fc834265	e2415f75c9e537f4798f8df0fa38a00e27cf167f	2026-11-10	feat(telemetry): add execution observability (S23)

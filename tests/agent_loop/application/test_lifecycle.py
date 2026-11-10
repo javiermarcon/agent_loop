@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,8 +18,6 @@ from agent_loop.application.lifecycle import render_run_context
 from agent_loop.application.lifecycle import run_lifecycle
 from agent_loop.domain.errors import AgentLoopError
 from agent_loop.domain.errors import ResumeArgumentError
-from scripts.agent_loop_models import AgentLoopRunContext
-from scripts.agent_loop_models import RepoRootSource
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -32,6 +31,26 @@ _INVALID_RESUME_STATE = "invalid resume state"
 _TARGET_REQUIRED = "target required"
 _SINGLE_FAILED = "single failed"
 _MULTI_FAILED = "multi failed"
+
+
+class RepoRootSource(StrEnum):
+    """Identify the authoritative source selected for the target worktree."""
+
+    EXPLICIT_REPO_ROOT = "explicit_repo_root"
+    ENHANCEMENT_REPO_ROOT = "enhancement_repo_root"
+    CWD_GIT_ROOT = "cwd_git_root"
+
+
+@dataclass(frozen=True)
+class AgentLoopRunContext:
+    """Repository identities used by the lifecycle rendering contract."""
+
+    orchestrator_root: Path
+    target_repo_root: Path | None
+    preview_base_dir: Path
+    enhancement_repo_root: Path | None
+    target_repo_root_source: RepoRootSource | None
+    python_executable: Path
 
 
 @dataclass(frozen=True)

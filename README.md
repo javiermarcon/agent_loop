@@ -1,8 +1,8 @@
 # Agent Loop — Autonomous Django Edition
 
 Herramienta autónoma para ejecutar Agent Loop contra repositorios Django externos.
-Este directorio es autocontenido: incluye el núcleo `agent_loop/`, el runtime
-autónomo, la CLI, los checks y la documentación. No depende del checkout de
+Este repositorio es autocontenido: incluye el núcleo `agent_loop/`, el runtime
+autónomo, la CLI, la suite de tests y la documentación. No depende del checkout de
 Shipii.
 
 ## 1. Requisitos
@@ -18,7 +18,7 @@ Shipii.
 ## 2. Instalación
 
 ```bash
-cd agent-loop-standalone
+cd agent_loop
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
@@ -324,18 +324,24 @@ Para agregar otro ecosistema (Node.js, TypeScript, etc.) se deben agregar:
 No se debe acoplar el núcleo a Ruff, pytest o Django. S21 no implementa otros
 ecosistemas.
 
-## 8. Duplicación y sincronización
+## 8. Repositorio independiente
 
-`agent_loop/` en el repositorio Shipii es la **fuente canónica**.
-`standalone/agent_loop/` es un **snapshot vendored** intencional para que esta
-carpeta pueda copiarse fuera del checkout y ejecutarse de forma independiente.
+Este repositorio se extrajo del monorepo Shipii conservando el historial propio
+de Agent Loop. La estructura definitiva mantiene el paquete técnico
+`agent_loop/`, sus imports y su API sin renombrados masivos.
 
-El contrato completo está en `VENDORING.md`. La suite canónica verifica que el
-snapshot no tenga archivos faltantes, archivos extra ni divergencias de bytes.
-`standalone/checks/` es una copia transformada de los tests canónicos; no es
-una segunda fuente de verdad. Un gate determinista comprueba el conjunto de
-checks, `support.py` y la transformación documentada de cada test, y falla ante
-cualquier drift no sincronizado.
+- `agent_loop/` es la única fuente canónica del producto.
+- `tests/agent_loop/` contiene la suite completa (unitaria, de contrato y de
+  integración) del paquete.
+- `ARCHITECTURE.md` y `ARCHITECTURE_DECISIONS.md` documentan las decisiones de
+  Agent Loop.
+- `docs/ai/` conserva la investigación de S22 (OpenCode Server) y el esquema de
+  telemetría S23.
+
+Las antiguas copias vendored (`standalone/agent_loop/`), los checks
+transformados (`standalone/checks/`) y los wrappers legacy hospedados en
+`scripts/` no forman parte de esta distribución. La duplicación se eliminó para
+que exista una sola fuente de verdad.
 
 ## 9. Tests
 
@@ -343,17 +349,28 @@ cualquier drift no sincronizado.
 pytest
 ```
 
-Los checks cubren seguridad, instrucciones, descubrimiento Django, herramientas,
-ejecución de comandos, entorno aislado, adapters, loop y CLI. También se validan
-dos proyectos Django de ejemplo con configuraciones distintas en `fixtures/`.
+La suite cubre seguridad, instrucciones, descubrimiento Django, herramientas,
+ejecución de comandos, entorno aislado, adapters, control plane, telemetría y
+CLI. Los tests que dependían exclusivamente de wrappers legacy de Shipii
+(`scripts.*`) no se migraron; su comportamiento canónico se conserva en la
+suite restante.
 
-## 10. Extracción
+Cobertura y quality gates:
 
-1. Copiar este directorio a otra ubicación.
-2. Crear un repositorio Git independiente.
-3. Crear un virtualenv.
-4. `pip install -r requirements-dev.txt`.
-5. Ejecutar `python run.py --help`.
+```bash
+pytest --cov=agent_loop --cov-report=term-missing
+ruff check .
+ruff format --check .
+mypy agent_loop
+pylint agent_loop
+```
+
+## 10. Instalación como repositorio independiente
+
+1. Crear un virtualenv.
+2. `pip install -r requirements-dev.txt`.
+3. Instalar el paquete en modo editable: `pip install -e .`.
+4. Ejecutar `python run.py --help` o `agent-loop --help`.
 
 No hay rutas absolutas, imports de Shipii, scripts externos ni dependencias del
 checkout original.

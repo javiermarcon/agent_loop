@@ -22,14 +22,11 @@ def _repo(tmp_path: Path) -> Path:
     return make_project(tmp_path / "repo")
 
 
-def _standalone_run_path() -> Path:
+def _repository_run_path() -> Path:
     for parent in Path(__file__).resolve().parents:
-        if (parent / "run.py").is_file() and (parent / "agent_loop").is_dir() and (parent / "checks").is_dir():
+        if (parent / "run.py").is_file() and (parent / "agent_loop").is_dir():
             return parent / "run.py"
-        nested = parent / "standalone" / "run.py"
-        if nested.is_file() and (parent / "standalone" / "agent_loop").is_dir():
-            return nested
-    message = "standalone/run.py could not be located"
+    message = "run.py could not be located"
     raise RuntimeError(message)
 
 
@@ -193,7 +190,7 @@ def test_standalone_cli_reports_agent_commit_as_undetermined(tmp_path: Path) -> 
     completed = subprocess.run(  # noqa: S603
         (
             sys.executable,
-            str(_standalone_run_path()),
+            str(_repository_run_path()),
             "--repo",
             str(root),
             "--requirement",

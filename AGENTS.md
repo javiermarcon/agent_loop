@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Loop autonomous edition
 
-This file governs work inside the standalone `agent-loop` distribution. It is
+This file governs work inside the independent `agent-loop` repository. It is
 intentionally independent from the Shipii repository instructions.
 
 ## Purpose
@@ -20,8 +20,8 @@ target repository.
 - Do not use the Agent Loop interpreter to run target tools. Use the target
   project's virtualenv.
 - Do not add support for non-Django ecosystems in this stage.
-- OpenCode Server integration (S22) is vendored from the canonical package; do not
-  modify or reimplement it independently here.
+- OpenCode Server integration (S22) is part of the canonical package; do not
+  modify or reimplement it independently from the rest of the package.
 
 ## Security invariants
 
@@ -51,7 +51,7 @@ target repository.
 - Add focused pytest coverage for every new behavior.
 - Cover success, failure, unavailable, unknown and security paths.
 - Do not weaken or delete existing tests.
-- Run `pytest` from the standalone root before claiming completion.
+- Run `pytest` from the repository root before claiming completion.
 
 ## Quality
 
@@ -59,12 +59,10 @@ target repository.
 - Do not modify quality configuration to make a patch pass.
 - Do not use blanket `# noqa`, `# type: ignore` or `pylint: disable`.
 
-## Vendoring
+## Repository boundary
 
-`standalone/agent_loop/` is a vendored snapshot of the canonical `agent_loop/`
-package. Make production changes in the canonical tree first, then follow
-`VENDORING.md` to refresh the snapshot. Do not edit the snapshot as an
-independent source of truth.
+`agent_loop/` is the single canonical package. Do not reintroduce vendored
+copies, transformed check suites or Shipii-hosted `scripts/` wrappers.
 
 ## Documentation
 

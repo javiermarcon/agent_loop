@@ -1,13 +1,12 @@
-"""Ensure the standalone package root is importable from its own checks.
+"""Keep the repository package importable from its own test run.
 
-The folder may live inside a larger checkout while it is being prepared. In
-that case a parent directory containing another ``agent_loop`` package can
-shadow the vendored one, so this conftest removes those entries first.
+A parent directory containing another ``agent_loop`` package can shadow the
+one in this repository, so this conftest removes those entries first.
 
-The cleanup is deferred to ``pytest_configure`` and only runs when the
-standalone directory is the pytest root. Otherwise collecting vendored
-fixtures from a parent repository would mutate the parent interpreter path and
-break unrelated test modules.
+The cleanup is deferred to ``pytest_configure`` and only runs when this
+directory is the pytest root. Otherwise collecting tests from a parent
+repository would mutate the parent interpreter path and break unrelated test
+modules.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ _ROOT = Path(__file__).resolve().parent
 
 
 def pytest_configure(config: object) -> None:
-    """Isolate the vendored package only for standalone-rooted runs."""
+    """Isolate this repository's package only for root-scoped runs."""
     rootpath = getattr(config, "rootpath", None)
     if rootpath is None or Path(rootpath).resolve() != _ROOT:
         return

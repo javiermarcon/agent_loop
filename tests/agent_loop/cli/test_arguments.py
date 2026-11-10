@@ -1,4 +1,4 @@
-"""Characterization and parity tests for the agent-loop CLI contract."""
+"""Contract tests for the canonical agent-loop CLI argument parser."""
 
 from __future__ import annotations
 
@@ -10,13 +10,9 @@ from typing import Protocol
 
 import pytest
 
-from agent_loop.cli.arguments import build_argument_parser
 from agent_loop.cli.arguments import parse_args as canonical_parse_args
 from agent_loop.cli.defaults import DEFAULT_MAX_ITERATIONS
 from agent_loop.cli.option_provenance import CLIOptionProvenance
-from scripts import agent_loop as legacy_agent_loop
-from scripts import cli_option_provenance as legacy_provenance
-from scripts.agent_loop import parse_args as legacy_parse_args
 
 if TYPE_CHECKING:
     import argparse
@@ -25,7 +21,7 @@ EXPECTED_MAX_ITERATIONS = 30
 
 
 class ArgumentParser(Protocol):
-    """Callable contract shared by canonical and compatibility parsers."""
+    """Callable contract of the CLI argument parser."""
 
     def __call__(self, argv: list[str]) -> argparse.Namespace:
         """Parse one explicit argument vector."""
@@ -66,25 +62,21 @@ class ArgumentParser(Protocol):
         ),
     ],
 )
-def test_canonical_parser_matches_legacy_contract(
+def test_canonical_parser_contract(
     argv: list[str],
     expected: dict[str, object],
 ) -> None:
-    """Canonical parsing preserves representative legacy values exactly."""
+    """Canonical parsing preserves the documented option values exactly."""
     canonical = canonical_parse_args(argv)
-    legacy = legacy_parse_args(argv)
 
-    assert vars(canonical) == vars(legacy)
     for name, value in expected.items():
         assert vars(canonical)[name] == value
 
 
-def test_defaults_match_legacy_contract() -> None:
-    """Canonical defaults remain identical to the current CLI defaults."""
+def test_defaults_contract() -> None:
+    """Canonical defaults remain stable."""
     canonical = canonical_parse_args([])
-    legacy = legacy_parse_args([])
 
-    assert vars(canonical) == vars(legacy)
     assert canonical.max_iterations == DEFAULT_MAX_ITERATIONS == EXPECTED_MAX_ITERATIONS
     assert canonical.gate_governor is True
     assert canonical.commit_msg is None
@@ -109,14 +101,8 @@ def test_explicit_parsing_does_not_modify_process_argv() -> None:
     assert tuple(sys.argv) == process_argv
 
 
-def test_legacy_cli_symbols_delegate_to_canonical_owners() -> None:
-    """Legacy imports preserve compatibility without duplicate implementations."""
-    assert vars(legacy_agent_loop)["_build_argument_parser"] is build_argument_parser
-    assert legacy_provenance.CLIOptionProvenance is CLIOptionProvenance
-
-
 def test_canonical_cli_never_imports_legacy_scripts() -> None:
-    """CLI ownership points from legacy scripts to the canonical package only."""
+    """CLI ownership points to the canonical package only."""
     violations: list[str] = []
     for path in sorted(Path("agent_loop/cli").glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -125,9 +111,12 @@ def test_canonical_cli_never_imports_legacy_scripts() -> None:
                 violations.extend(
                     alias.name for alias in node.names if alias.name == "scripts" or alias.name.startswith("scripts.")
                 )
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                if node.module == "scripts" or node.module.startswith("scripts."):
-                    violations.append(node.module)
+            elif (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and (node.module == "scripts" or node.module.startswith("scripts."))
+            ):
+                violations.append(node.module)
 
     assert violations == []
 
@@ -150,28 +139,25 @@ def _parse_failure(
         ["--multi-requirement-manual-policy", "invalid"],
     ],
 )
-def test_argparse_failures_match_legacy(
+def test_argparse_failures(
     argv: list[str],
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Unknown options and invalid choices retain argparse behavior."""
-    canonical = _parse_failure(canonical_parse_args, argv, capsys)
-    legacy = _parse_failure(legacy_parse_args, argv, capsys)
+    exit_code, stderr = _parse_failure(canonical_parse_args, argv, capsys)
 
-    assert canonical == legacy
+    assert exit_code == 2
+    assert stderr
 
 
-def test_help_matches_legacy(
+def test_help_contract(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Help exits cleanly and renders the same documented contract."""
-    with pytest.raises(SystemExit) as canonical_exit:
+    """Help exits cleanly and renders the documented contract."""
+    with pytest.raises(SystemExit) as exc_info:
         canonical_parse_args(["--help"])
-    canonical_output = capsys.readouterr().out
+    output = capsys.readouterr().out
 
-    with pytest.raises(SystemExit) as legacy_exit:
-        legacy_parse_args(["--help"])
-    legacy_output = capsys.readouterr().out
-
-    assert canonical_exit.value.code == legacy_exit.value.code == 0
-    assert canonical_output == legacy_output
+    assert exc_info.value.code == 0
+    assert "--requirement" in output
+    assert "--scope-path" in output
