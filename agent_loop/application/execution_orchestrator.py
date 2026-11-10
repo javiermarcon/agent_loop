@@ -17,8 +17,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 from enum import StrEnum
+from time import monotonic
 from typing import TYPE_CHECKING
 from typing import cast
+from uuid import uuid4
 
 from agent_loop.application.execution_request_builder import ExecutionRequestOptions
 from agent_loop.application.execution_request_builder import build_execution_request
@@ -39,6 +41,11 @@ from agent_loop.ports.agent_runtime import AgentExecutionRequest
 from agent_loop.ports.agent_runtime import AgentExecutionResult
 from agent_loop.ports.agent_runtime import AgentExecutionStatus
 from agent_loop.ports.agent_runtime import RuntimeIdentity
+from agent_loop.ports.telemetry import TelemetryEventName
+from agent_loop.telemetry.recorder import TelemetryFacts
+from agent_loop.telemetry.recorder import TelemetryRecorder
+from agent_loop.telemetry.recorder import aggregate_usage
+from agent_loop.telemetry.recorder import usage_from_result
 
 if TYPE_CHECKING:
     from agent_loop.application.execution_routing import RoutingDecision
@@ -54,6 +61,7 @@ if TYPE_CHECKING:
     from agent_loop.ports.agent_runtime import ExecutionStrategy
     from agent_loop.ports.agent_runtime import MutationPolicy
     from agent_loop.ports.agent_runtime import PermissionPolicy
+    from agent_loop.ports.telemetry import TelemetrySink
 
 
 class ExecutionRunStatus(StrEnum):
@@ -88,6 +96,8 @@ class ExecutionRunOptions:
     structured_output_schema: str | None = None
     session_ref: str | None = None
     limits: RecoveryLimits = field(default_factory=RecoveryLimits)
+    telemetry: TelemetrySink | None = None
+    execution_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,11 +136,16 @@ class ExecutionRunOutcome:
 
 
 @dataclass(frozen=True, slots=True)
-class _PreparedRun:
-    """Validated routing and runtime registry for a schedulable WorkItem."""
+class _RunContext:
+    """Immutable inputs shared by every attempt of one control-plane run."""
 
+    work_item: WorkItem
+    assessment: TaskAssessment
+    options: ExecutionRunOptions
+    routing: RoutingInputs
     registry: dict[str, AgentRuntime]
-    decision: RoutingDecision
+    recorder: TelemetryRecorder | None
+    started: float
 
 
 def execute_work_item_with_recovery(
@@ -142,86 +157,106 @@ def execute_work_item_with_recovery(
     runtimes: tuple[AgentRuntime, ...],
 ) -> ExecutionRunOutcome:
     """Execute one WorkItem with bounded retry/escalation, or stop explicitly."""
-    prepared = _prepare_run(work_item, assessment, options=options, routing=routing, runtimes=runtimes)
-    if isinstance(prepared, ExecutionRunOutcome):
-        return prepared
-    registry = prepared.registry
-    decision = prepared.decision
-    attempts: list[ExecutionAttempt] = []
-    attempts_per_combination: dict[tuple[str, str], int] = {}
-    attempted_combinations: set[tuple[str, str]] = set()
-    while True:
-        if len(attempts) >= options.limits.max_total_attempts:
-            return _exhausted_outcome(work_item, attempts, options.limits)
-        selected = cast("CompatibleModelCandidate", decision.selected)
-        key = selected.identity_key()
-        attempts_per_combination[key] = attempts_per_combination.get(key, 0) + 1
-        attempted_combinations.add(key)
-        request = _build_request(
-            work_item,
-            assessment,
-            decision=decision,
-            options=options,
-            attempt_number=len(attempts) + 1,
-        )
-        result = _execute(registry, selected.runtime_id, request)
-        terminal = _terminal_result(work_item, attempts, decision, request, result)
-        if terminal is not None:
-            return terminal
-        failure = result.failure or _unknown_failure(result)
-        classification = classify_failure(
-            failure,
-            idempotent=not options.mutation_policy.allow_workspace_mutation,
-        )
-        same_route, other_route = _escalation_routes(
-            assessment,
-            routing,
-            attempted=attempted_combinations,
-            current_runtime_id=selected.runtime_id,
-        )
-        recovery = decide_recovery(
-            classification,
-            context=RecoveryContext(
-                attempts_for_combination=attempts_per_combination[key],
-                total_attempts=len(attempts) + 1,
-                alternatives=_availability(same_route, other_route),
-            ),
-            limits=options.limits,
-        )
-        attempts.append(
-            ExecutionAttempt(
-                len(attempts) + 1,
-                decision,
-                request,
-                result,
-                classification,
-                recovery,
-            ),
-        )
-        next_decision = _next_decision(recovery.action, decision, same_route, other_route)
-        if next_decision is None:
-            return _recovery_outcome(work_item, attempts, recovery)
-        decision = next_decision
-
-
-def _prepare_run(
-    work_item: WorkItem,
-    assessment: TaskAssessment,
-    *,
-    options: ExecutionRunOptions,
-    routing: RoutingInputs,
-    runtimes: tuple[AgentRuntime, ...],
-) -> _PreparedRun | ExecutionRunOutcome:
+    started = monotonic()
+    recorder = _telemetry_recorder(options)
+    _record_work_item_received(recorder, work_item)
     if not is_schedulable(work_item, completed_ids=options.completed_ids):
-        return _blocked_outcome(work_item, "work_item_not_schedulable")
+        return _close_run(_blocked_outcome(work_item, "work_item_not_schedulable"), recorder, started)
     decision = _route(
         assessment,
         routing,
         RoutingConstraints(strategy=routing.strategy, readiness=routing.readiness),
     )
+    _record_routing(recorder, decision)
     if decision.selected is None:
-        return _blocked_outcome(work_item, "routing_terminal:no_operationally_eligible_candidate")
-    return _PreparedRun(registry=_runtime_registry(runtimes), decision=decision)
+        return _close_run(
+            _blocked_outcome(work_item, "routing_terminal:no_operationally_eligible_candidate"),
+            recorder,
+            started,
+        )
+    context = _RunContext(
+        work_item=work_item,
+        assessment=assessment,
+        options=options,
+        routing=routing,
+        registry=_runtime_registry(runtimes),
+        recorder=recorder,
+        started=started,
+    )
+    attempts: list[ExecutionAttempt] = []
+    attempts_per_combination: dict[tuple[str, str], int] = {}
+    attempted_combinations: set[tuple[str, str]] = set()
+    while True:
+        if len(attempts) >= options.limits.max_total_attempts:
+            return _close_run(_exhausted_outcome(work_item, attempts, options.limits), recorder, started)
+        transition = _perform_attempt(context, decision, attempts, attempts_per_combination, attempted_combinations)
+        if isinstance(transition, ExecutionRunOutcome):
+            return transition
+        decision = transition
+
+
+def _perform_attempt(
+    context: _RunContext,
+    decision: RoutingDecision,
+    attempts: list[ExecutionAttempt],
+    attempts_per_combination: dict[tuple[str, str], int],
+    attempted_combinations: set[tuple[str, str]],
+) -> ExecutionRunOutcome | RoutingDecision:
+    """Execute one routed attempt and return the next route or a terminal outcome."""
+    selected = cast("CompatibleModelCandidate", decision.selected)
+    key = selected.identity_key()
+    attempts_per_combination[key] = attempts_per_combination.get(key, 0) + 1
+    attempted_combinations.add(key)
+    request = _build_request(
+        context.work_item,
+        context.assessment,
+        decision=decision,
+        options=context.options,
+        attempt_number=len(attempts) + 1,
+    )
+    attempt_number = len(attempts) + 1
+    _record_execution_started(context.recorder, attempt_number, selected, request)
+    attempt_started = monotonic()
+    result = _execute(context.registry, selected.runtime_id, request)
+    _record_execution_result(context.recorder, attempt_number, request, result, attempt_started)
+    terminal = _terminal_result(context.work_item, attempts, decision, request, result)
+    if terminal is not None:
+        return _close_run(terminal, context.recorder, context.started)
+    failure = _result_failure(result)
+    classification = classify_failure(
+        failure,
+        idempotent=not context.options.mutation_policy.allow_workspace_mutation,
+    )
+    same_route, other_route = _escalation_routes(
+        context.assessment,
+        context.routing,
+        attempted=attempted_combinations,
+        current_runtime_id=selected.runtime_id,
+    )
+    recovery = decide_recovery(
+        classification,
+        context=RecoveryContext(
+            attempts_for_combination=attempts_per_combination[key],
+            total_attempts=len(attempts) + 1,
+            alternatives=_availability(same_route, other_route),
+        ),
+        limits=context.options.limits,
+    )
+    attempts.append(
+        ExecutionAttempt(
+            len(attempts) + 1,
+            decision,
+            request,
+            result,
+            classification,
+            recovery,
+        ),
+    )
+    next_decision = _next_decision(recovery.action, decision, same_route, other_route)
+    if next_decision is None:
+        return _close_run(_recovery_outcome(context.work_item, attempts, recovery), context.recorder, context.started)
+    _record_transition(context.recorder, len(attempts) + 1, decision, next_decision, recovery)
+    return next_decision
 
 
 def _terminal_result(
@@ -268,6 +303,172 @@ def _runtime_registry(runtimes: tuple[AgentRuntime, ...]) -> dict[str, AgentRunt
             raise ValueError(message)
         registry[runtime_id] = runtime
     return registry
+
+
+def _telemetry_recorder(options: ExecutionRunOptions) -> TelemetryRecorder | None:
+    if options.telemetry is None:
+        return None
+    execution_id = (options.execution_id or "").strip() or uuid4().hex
+    return TelemetryRecorder(
+        options.telemetry,
+        execution_id=execution_id,
+        target_repository=options.working_directory,
+    )
+
+
+def _record_work_item_received(recorder: TelemetryRecorder | None, work_item: WorkItem) -> None:
+    if recorder is None:
+        return
+    recorder.record(
+        TelemetryEventName.WORK_ITEM_RECEIVED,
+        TelemetryFacts(
+            work_item_id=work_item.work_item_id,
+            status=work_item.status.value,
+            attributes={
+                "dependency_count": str(len(work_item.depends_on)),
+                "context_ref_count": str(len(work_item.context_refs)),
+            },
+        ),
+    )
+
+
+def _record_routing(recorder: TelemetryRecorder | None, decision: RoutingDecision) -> None:
+    if recorder is None:
+        return
+    selected = decision.selected
+    recorder.record(
+        TelemetryEventName.ROUTING_COMPLETED,
+        TelemetryFacts(
+            runtime_id=None if selected is None else selected.runtime_id,
+            model_id=None if selected is None else selected.native_model_ref,
+            status="selected" if selected is not None else "no_selection",
+            attributes={
+                "strategy": decision.strategy.value,
+                "eligible_count": str(len(decision.eligible)),
+                "eligible_runtimes": ",".join(candidate.runtime_id for candidate in decision.eligible),
+                "evidence_count": str(len(decision.evidence)),
+                "reason_count": str(len(decision.reasons)),
+            },
+        ),
+    )
+
+
+def _record_execution_started(
+    recorder: TelemetryRecorder | None,
+    attempt: int,
+    selected: CompatibleModelCandidate,
+    request: AgentExecutionRequest,
+) -> None:
+    if recorder is None:
+        return
+    recorder.record(
+        TelemetryEventName.EXECUTION_STARTED,
+        TelemetryFacts(
+            attempt=attempt,
+            runtime_id=selected.runtime_id,
+            model_id=request.model,
+            session_ref=request.session_ref,
+            status="started",
+            attributes={
+                "strategy": request.strategy.value,
+                "required_capability_count": str(len(request.required_capabilities)),
+                "workspace_mutation": str(request.mutation_policy.allow_workspace_mutation).lower(),
+            },
+        ),
+    )
+
+
+def _record_execution_result(
+    recorder: TelemetryRecorder | None,
+    attempt: int,
+    request: AgentExecutionRequest,
+    result: AgentExecutionResult,
+    started: float,
+) -> None:
+    if recorder is None:
+        return
+    failed = result.status is AgentExecutionStatus.FAILED
+    attributes = {
+        "evidence_count": str(len(result.evidence_refs)),
+        "observed_failure_count": str(len(result.observed_failures)),
+        "structured_output_present": str(result.structured_output is not None).lower(),
+    }
+    if request.model is not None:
+        attributes["requested_model"] = request.model
+    recorder.record(
+        TelemetryEventName.EXECUTION_FAILED if failed else TelemetryEventName.EXECUTION_COMPLETED,
+        TelemetryFacts(
+            attempt=attempt,
+            runtime_id=result.runtime_identity.runtime_id,
+            model_id=result.model_id,
+            session_ref=result.session_ref,
+            status=result.status.value,
+            duration_ms=_elapsed_ms(started),
+            failure=_result_failure(result) if failed else None,
+            usage=usage_from_result(result),
+            attributes=attributes,
+        ),
+    )
+
+
+def _record_transition(
+    recorder: TelemetryRecorder | None,
+    attempt: int,
+    current: RoutingDecision,
+    next_decision: RoutingDecision,
+    recovery: RecoveryDecision,
+) -> None:
+    if recorder is None:
+        return
+    current_selected = cast("CompatibleModelCandidate", current.selected)
+    next_selected = cast("CompatibleModelCandidate", next_decision.selected)
+    retrying = recovery.action is RecoveryAction.RETRY_SAME_COMBINATION
+    attributes = {
+        "recovery_action": recovery.action.value,
+        "reason": recovery.reason,
+        "from_runtime": current_selected.runtime_id,
+        "from_model": current_selected.native_model_ref,
+    }
+    recorder.record(
+        TelemetryEventName.RETRY_STARTED if retrying else TelemetryEventName.ESCALATION_STARTED,
+        TelemetryFacts(
+            attempt=attempt,
+            runtime_id=next_selected.runtime_id,
+            model_id=next_selected.native_model_ref,
+            status="scheduled",
+            attributes=attributes,
+        ),
+    )
+
+
+def _close_run(
+    outcome: ExecutionRunOutcome,
+    recorder: TelemetryRecorder | None,
+    started: float,
+) -> ExecutionRunOutcome:
+    if recorder is None:
+        return outcome
+    usage = aggregate_usage(
+        None if attempt.result is None else usage_from_result(attempt.result) for attempt in outcome.attempts
+    )
+    recorder.record(
+        TelemetryEventName.WORK_ITEM_CLOSED,
+        TelemetryFacts(
+            work_item_id=outcome.work_item_id,
+            status=outcome.status.value,
+            duration_ms=_elapsed_ms(started),
+            usage=usage,
+            attributes={
+                "reason": outcome.final_reason,
+                "attempt_count": str(len(outcome.attempts)),
+            },
+        ),
+    )
+    return outcome
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, round((monotonic() - started) * 1000))
 
 
 def _route(
@@ -326,6 +527,10 @@ def _execute(
             ),
         )
     return runtime.execute(request)
+
+
+def _result_failure(result: AgentExecutionResult) -> ExecutionFailure:
+    return result.failure or _unknown_failure(result)
 
 
 def _unknown_failure(result: AgentExecutionResult) -> ExecutionFailure:

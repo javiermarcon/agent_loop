@@ -33,6 +33,7 @@ from agent_loop.autonomy.report import AutonomyResult
 from agent_loop.autonomy.report import DiscoveryReport
 from agent_loop.autonomy.report import to_json
 from agent_loop.autonomy.requirement import RequirementSource
+from agent_loop.autonomy.telemetry import AutonomyTelemetry
 from agent_loop.autonomy.tools.adapters import default_registry
 from agent_loop.autonomy.tools.base import ToolContext
 from agent_loop.autonomy.tools.base import ToolResult
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
     from agent_loop.autonomy.discovery.django_project import DjangoProjectInfo
     from agent_loop.autonomy.security import TargetWorkspace
     from agent_loop.autonomy.tools.registry import ToolRegistry
+    from agent_loop.ports.telemetry import TelemetrySink
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +65,8 @@ class AutonomyRequest:
     validate_only: bool = False
     target_paths: tuple[str, ...] = ()
     requirement_source: RequirementSource | None = None
+    execution_id: str | None = None
+    telemetry: TelemetrySink | None = None
 
     def __post_init__(self) -> None:
         if not self.requirement.strip():
@@ -78,6 +82,16 @@ class AutonomyRequest:
         object.__setattr__(self, "requirement_source", source)
         normalized = _normalize_target_paths(self.workspace, self.target_paths)
         object.__setattr__(self, "target_paths", normalized)
+
+
+@dataclass(frozen=True, slots=True)
+class _CycleSetup:
+    """Immutable discovery/context inputs shared by one agent cycle."""
+
+    discovery: DiscoveryReport
+    context: ToolContext
+    prompt: str
+    baseline: GitBaseline
 
 
 @dataclass(slots=True)
@@ -122,30 +136,47 @@ class AutonomyLoop:
 
     def run(self, request: AutonomyRequest) -> AutonomyResult:
         """Run discovery and, unless disabled, the agent/validation cycle."""
+        telemetry = self._telemetry_for(request)
+        if telemetry is not None:
+            origin = "unspecified" if request.requirement_source is None else request.requirement_source.origin.value
+            telemetry.run_received(origin)
         discovery = self._discover(request.workspace)
         context = self._build_context(request, discovery)
         if request.discover_only:
-            return self._finish(request, self._discover_only_result(discovery))
+            return self._finish(request, self._discover_only_result(discovery), telemetry)
         if not discovery.project.is_django:
             message = "target repository does not look like a Django project"
             raise DiscoveryError(message)
         prompt = build_prompt(request, discovery)
         if request.dry_run:
-            return self._finish(request, self._dry_run_result(discovery, prompt))
+            return self._finish(request, self._dry_run_result(discovery, prompt), telemetry)
         if request.validate_only:
-            return self._finish(request, self._validate_only_result(request, discovery, context, prompt))
-        if not request.config.agent_command:
-            return self._finish(request, self._missing_agent_result(discovery, prompt))
-        baseline = capture_git_baseline(request.workspace)
-        return self._finish(
-            request,
-            self._run_agent_cycle(
+            result = self._validate_only_result(
                 request,
-                discovery=discovery,
-                context=context,
-                prompt=prompt,
-                baseline=baseline,
-            ),
+                discovery,
+                context,
+                prompt,
+                telemetry=telemetry,
+            )
+            return self._finish(request, result, telemetry)
+        if not request.config.agent_command:
+            return self._finish(request, self._missing_agent_result(discovery, prompt), telemetry)
+        baseline = capture_git_baseline(request.workspace)
+        setup = _CycleSetup(
+            discovery=discovery,
+            context=context,
+            prompt=prompt,
+            baseline=baseline,
+        )
+        return self._finish(request, self._run_agent_cycle(request, setup, telemetry), telemetry)
+
+    def _telemetry_for(self, request: AutonomyRequest) -> AutonomyTelemetry | None:
+        if request.telemetry is None:
+            return None
+        return AutonomyTelemetry(
+            request.telemetry,
+            target_repository=str(request.workspace.root),
+            execution_id=request.execution_id,
         )
 
     def _build_context(self, request: AutonomyRequest, discovery: DiscoveryReport) -> ToolContext:
@@ -202,12 +233,17 @@ class AutonomyLoop:
         discovery: DiscoveryReport,
         context: ToolContext,
         prompt: str,
+        *,
+        telemetry: AutonomyTelemetry | None,
     ) -> AutonomyResult:
         baseline = capture_git_baseline(request.workspace)
         report = self._validation.run(context, request.tool_kinds)
+        _record_validation(telemetry, 1, report)
         final_git = discover_git(request.workspace)
         audit = audit_git_changes(request.workspace, baseline, final_git, scope_paths=request.target_paths)
         audit = merge_window_attribution(audit, validation_audits=(audit,))
+        if telemetry is not None:
+            telemetry.changes_detected(audit)
         status, guard_message = _apply_git_audit_guard(_overall_status((), (report,)), audit)
         message = _validation_message(report)
         if guard_message is not None:
@@ -228,23 +264,14 @@ class AutonomyLoop:
     def _run_agent_cycle(
         self,
         request: AutonomyRequest,
-        *,
-        discovery: DiscoveryReport,
-        context: ToolContext,
-        prompt: str,
-        baseline: GitBaseline,
+        setup: _CycleSetup,
+        telemetry: AutonomyTelemetry | None,
     ) -> AutonomyResult:
-        state = _CycleState(context=context, prompt=prompt, window_baseline=baseline)
+        state = _CycleState(context=setup.context, prompt=setup.prompt, window_baseline=setup.baseline)
         for iteration in range(request.config.max_iterations):
-            if not self._run_iteration(request, baseline, state, iteration):
+            if not self._run_iteration(request, setup.baseline, state, iteration, telemetry=telemetry):
                 break
-        return self._finalize_cycle(
-            request,
-            discovery=discovery,
-            prompt=prompt,
-            baseline=baseline,
-            state=state,
-        )
+        return self._finalize_cycle(request, setup, state, telemetry)
 
     def _run_iteration(
         self,
@@ -252,8 +279,14 @@ class AutonomyLoop:
         baseline: GitBaseline,
         state: _CycleState,
         iteration: int,
+        *,
+        telemetry: AutonomyTelemetry | None,
     ) -> bool:
+        if telemetry is not None:
+            telemetry.agent_started(iteration + 1)
         run = self._agent.invoke(state.prompt, state.context)
+        if telemetry is not None:
+            telemetry.agent_finished(iteration + 1, run)
         state.agent_runs.append(run)
         after_agent = discover_git(request.workspace)
         state.iteration_audits.append(
@@ -272,16 +305,18 @@ class AutonomyLoop:
             state.status = run.status if run.status is not ToolStatus.PASS else ToolStatus.FAIL
             state.message = f"agent invocation failed on iteration {iteration + 1}: {run.message}"
             return False
-        return self._run_validation_iteration(request, state, iteration)
+        return self._run_validation_iteration(request, state, iteration, telemetry)
 
     def _run_validation_iteration(
         self,
         request: AutonomyRequest,
         state: _CycleState,
         iteration: int,
+        telemetry: AutonomyTelemetry | None,
     ) -> bool:
         validation_baseline = capture_git_baseline(request.workspace)
         report = self._validation.run(state.context, request.tool_kinds)
+        _record_validation(telemetry, iteration + 1, report)
         state.validation_reports.append(report)
         after_validation = discover_git(request.workspace)
         state.validation_audits.append(
@@ -312,26 +347,26 @@ class AutonomyLoop:
     def _finalize_cycle(
         self,
         request: AutonomyRequest,
-        *,
-        discovery: DiscoveryReport,
-        prompt: str,
-        baseline: GitBaseline,
+        setup: _CycleSetup,
         state: _CycleState,
+        telemetry: AutonomyTelemetry | None,
     ) -> AutonomyResult:
         final_git = discover_git(request.workspace)
-        audit = audit_git_changes(request.workspace, baseline, final_git, scope_paths=request.target_paths)
+        audit = audit_git_changes(request.workspace, setup.baseline, final_git, scope_paths=request.target_paths)
         audit = merge_window_attribution(
             audit,
             agent_audits=tuple(state.agent_window_audits),
             validation_audits=tuple(state.validation_audits),
         )
+        if telemetry is not None:
+            telemetry.changes_detected(audit)
         status, guard_message = _apply_git_audit_guard(state.status, audit)
         message = state.message
         if guard_message is not None:
             message = f"{message}; {guard_message}"
         return AutonomyResult(
-            discovery=discovery,
-            prompt=prompt,
+            discovery=setup.discovery,
+            prompt=setup.prompt,
             agent_runs=tuple(state.agent_runs),
             validation_reports=tuple(state.validation_reports),
             final_git=final_git,
@@ -351,12 +386,31 @@ class AutonomyLoop:
         git = discover_git(workspace)
         return DiscoveryReport(instructions=instructions, project=project, tools=tools, git=git)
 
-    def _finish(self, request: AutonomyRequest, result: AutonomyResult) -> AutonomyResult:
+    def _finish(
+        self,
+        request: AutonomyRequest,
+        result: AutonomyResult,
+        telemetry: AutonomyTelemetry | None,
+    ) -> AutonomyResult:
         if result.requirement_source is None:
             result = replace(result, requirement_source=request.requirement_source)
+        if telemetry is not None:
+            telemetry.run_closed(result)
         if self._config.log_dir is not None:
             _persist(self._config.log_dir, result)
         return result
+
+
+def _record_validation(
+    telemetry: AutonomyTelemetry | None,
+    attempt: int,
+    report: ValidationReport,
+) -> None:
+    if telemetry is None:
+        return
+    for result in report.results:
+        telemetry.tool_finished(attempt, result)
+    telemetry.quality_finished(attempt, report)
 
 
 def _normalize_target_paths(workspace: TargetWorkspace, paths: tuple[str, ...]) -> tuple[str, ...]:
