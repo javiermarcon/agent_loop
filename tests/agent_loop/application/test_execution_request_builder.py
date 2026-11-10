@@ -223,14 +223,17 @@ def test_production_agent_execution_request_ctors_are_only_the_builder() -> None
     assert found <= (PRODUCTION_REQUEST_CTORS | TEST_REQUEST_CTORS)
 
 
-def test_application_builder_consumer_is_planning_bridge_only() -> None:
-    """S17 bridge is the sole application consumer of the builder.
+def test_application_builder_consumer_is_planning_bridge_and_orchestrator() -> None:
+    """The planning bridge and the S13/S14 orchestrator consume the builder.
 
     Separate checks: import ≠ invocation. Inventory does not analyze dataflow
-    to ``AgentRuntime.execute``; planning→builder is not runtime dispatch
-    (ADR-048 remains PARTIAL).
+    to ``AgentRuntime.execute``; planning→builder alone is not runtime dispatch.
+    The orchestrator now owns that dispatch frontier explicitly.
     """
-    expected = ["agent_loop/application/planned_execution_requests.py"]
+    expected = [
+        "agent_loop/application/execution_orchestrator.py",
+        "agent_loop/application/planned_execution_requests.py",
+    ]
     assert application_modules_importing_builder() == expected
     assert application_modules_invoking_builder() == expected
 

@@ -6,6 +6,7 @@ from typing import Protocol
 
 from agent_loop.domain.capabilities import CapabilityRequirement
 from agent_loop.domain.capabilities import RuntimeInventory
+from agent_loop.domain.faults import ExecutionFailure
 
 
 class ExecutionStrategy(StrEnum):
@@ -109,6 +110,7 @@ class AgentExecutionResult:
     usage: ExecutionUsage | None = None
     observed_failures: tuple[str, ...] = ()
     harness_metadata: tuple[tuple[str, str], ...] = ()
+    failure: ExecutionFailure | None = None
 
 
 class AgentRuntime(Protocol):

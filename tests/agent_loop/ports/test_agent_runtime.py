@@ -19,6 +19,9 @@ from agent_loop.domain.capabilities import EvidenceConfidence
 from agent_loop.domain.capabilities import EvidenceFreshness
 from agent_loop.domain.capabilities import EvidenceSource
 from agent_loop.domain.capabilities import RuntimeInventory
+from agent_loop.domain.faults import ExecutionFailure
+from agent_loop.domain.faults import ExecutionState
+from agent_loop.domain.faults import FailureCategory
 from agent_loop.ports.agent_runtime import AgentExecutionRequest
 from agent_loop.ports.agent_runtime import AgentExecutionResult
 from agent_loop.ports.agent_runtime import AgentExecutionStatus
@@ -195,6 +198,24 @@ def test_execution_result_is_normalized() -> None:
     assert result.usage.input_tokens == _FIXTURE_TOKEN_COUNT
     assert result.observed_failures == ()
     assert result.harness_metadata == (("adapter", "fixture"),)
+    assert result.failure is None
+
+
+def test_execution_result_can_carry_neutral_failure_detail() -> None:
+    """A failed result exposes adapter-neutral failure state for S14."""
+    failure = ExecutionFailure(
+        category=FailureCategory.TIMEOUT,
+        execution_state=ExecutionState.STARTED,
+        evidence=("evidence://timeout",),
+        detail="timed out",
+    )
+    result = AgentExecutionResult(
+        status=AgentExecutionStatus.FAILED,
+        runtime_identity=RuntimeIdentity("runtime-fixture"),
+        failure=failure,
+    )
+    assert result.failure == failure
+    assert result.failure.execution_state is ExecutionState.STARTED
 
 
 def test_recording_runtime_satisfies_agent_runtime_protocol() -> None:

@@ -61,7 +61,7 @@ def not_configured_inventory(*, observed_at: datetime, project_context: str | No
         runtime_version=_UNKNOWN_VERSION,
         adapter_version=ADAPTER_VERSION,
         discovered_at=observed_at,
-        capabilities=(snapshot,),
+        capabilities=(snapshot, *_filesystem_snapshots(snapshot, observed_at=observed_at, version=None)),
         models=(),
         project_context=project_context,
     )
@@ -95,7 +95,7 @@ def managed_not_started_inventory(*, observed_at: datetime, project_context: str
         runtime_version=_UNKNOWN_VERSION,
         adapter_version=ADAPTER_VERSION,
         discovered_at=observed_at,
-        capabilities=(snapshot,),
+        capabilities=(snapshot, *_filesystem_snapshots(snapshot, observed_at=observed_at, version=None)),
         models=(),
         project_context=project_context,
     )
@@ -135,7 +135,12 @@ def build_inventory(
         runtime_version=version or _UNKNOWN_VERSION,
         adapter_version=ADAPTER_VERSION,
         discovered_at=observed_at,
-        capabilities=(runtime_snapshot, models_snapshot, agents_snapshot),
+        capabilities=(
+            runtime_snapshot,
+            models_snapshot,
+            agents_snapshot,
+            *_filesystem_snapshots(runtime_snapshot, observed_at=observed_at, version=version),
+        ),
         models=models,
         project_context=project_context,
     )
@@ -179,9 +184,59 @@ def _connectivity_failure_inventory(
         runtime_version=_UNKNOWN_VERSION,
         adapter_version=ADAPTER_VERSION,
         discovered_at=observed_at,
-        capabilities=(snapshot,),
+        capabilities=(snapshot, *_filesystem_snapshots(snapshot, observed_at=observed_at, version=None)),
         models=(),
         project_context=project_context,
+    )
+
+
+def _filesystem_snapshots(
+    runtime_snapshot: CapabilitySnapshot,
+    *,
+    observed_at: datetime,
+    version: str | None,
+) -> tuple[CapabilitySnapshot, ...]:
+    """Declare workspace file capabilities following the observed runtime state.
+
+    A session is always scoped to a workspace and the adapter maps file tools
+    through restrictive permission rules. These snapshots never claim an axis
+    that the runtime snapshot did not observe as ``YES``.
+    """
+    return tuple(
+        _filesystem_snapshot(capability_id, runtime_snapshot, observed_at=observed_at, version=version)
+        for capability_id in ("filesystem.read", "filesystem.write")
+    )
+
+
+def _filesystem_snapshot(
+    capability_id: str,
+    runtime_snapshot: CapabilitySnapshot,
+    *,
+    observed_at: datetime,
+    version: str | None,
+) -> CapabilitySnapshot:
+    return CapabilitySnapshot(
+        capability_id=CapabilityId(capability_id),
+        supported=runtime_snapshot.supported,
+        configured=runtime_snapshot.configured,
+        enabled=runtime_snapshot.enabled,
+        available=runtime_snapshot.available,
+        connected=runtime_snapshot.connected,
+        healthy=runtime_snapshot.healthy,
+        authorized=runtime_snapshot.authorized,
+        allowed=runtime_snapshot.allowed,
+        evidence=(
+            _evidence(
+                observation=(
+                    f"workspace-scoped file tools follow runtime state {runtime_snapshot.capability_id.value}"
+                ),
+                observed_at=observed_at,
+                runtime_version=version,
+                confidence=runtime_snapshot.confidence,
+            ),
+        ),
+        confidence=runtime_snapshot.confidence,
+        native_binding="session workspace",
     )
 
 

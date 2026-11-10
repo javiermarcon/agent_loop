@@ -427,6 +427,33 @@ def test_resolve_compatible_candidates_is_not_wired_into_planning_bridge() -> No
     assert "AgentRuntime" not in bridge
 
 
+def test_routing_and_failure_modules_do_not_import_adapters() -> None:
+    """S13/S14 stay independent from concrete OpenCode/Claude adapters."""
+    for relative in (
+        "application/execution_routing.py",
+        "application/recovery_policy.py",
+        "application/execution_orchestrator.py",
+        "domain/faults.py",
+    ):
+        path = _PACKAGE_ROOT / relative
+        for module in _imported_modules(path):
+            assert not module.startswith("agent_loop.adapters"), relative
+
+
+def test_opencode_server_failure_mapping_does_not_own_control_plane_policy() -> None:
+    """S22 maps failures only; it cannot import routing or recovery policy."""
+    path = _PACKAGE_ROOT / "adapters" / "opencode_server" / "faults.py"
+    forbidden = (
+        "agent_loop.application",
+        "agent_loop.domain.compatible_candidates",
+        "agent_loop.domain.task_assessment",
+    )
+    assert _offender_lines(path, forbidden) == []
+    source = path.read_text(encoding="utf-8")
+    assert "decide_recovery" not in source
+    assert "select_routing" not in source
+
+
 def test_project_profiles_and_skills_avoid_forbidden_dependencies() -> None:
     """S20 project profiles/skills must not import adapters/application/scripts."""
     project_root = _PACKAGE_ROOT / "project"

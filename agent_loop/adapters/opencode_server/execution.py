@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from agent_loop.adapters.opencode_server.constants import TERMINAL_EVENT_TYPES
 from agent_loop.adapters.opencode_server.errors import OpenCodeServerError
 from agent_loop.adapters.opencode_server.errors import ServerFailureCode
+from agent_loop.adapters.opencode_server.faults import failure_detail_for
 from agent_loop.adapters.opencode_server.mapping import MetadataInput
 from agent_loop.adapters.opencode_server.mapping import agent_for_request
 from agent_loop.adapters.opencode_server.mapping import evidence_refs
@@ -29,6 +30,9 @@ from agent_loop.adapters.opencode_server.mapping import session_title
 from agent_loop.adapters.opencode_server.mapping import status_from_outcome
 from agent_loop.adapters.opencode_server.mapping import usage_from_session
 from agent_loop.adapters.opencode_server.redaction import redact_secret
+from agent_loop.domain.faults import ExecutionFailure
+from agent_loop.domain.faults import ExecutionState
+from agent_loop.domain.faults import FailureCategory
 from agent_loop.ports.agent_runtime import AgentExecutionResult
 from agent_loop.ports.agent_runtime import AgentExecutionStatus
 from agent_loop.ports.agent_runtime import RuntimeIdentity
@@ -451,6 +455,7 @@ def _result_from_outcome(
     diffs = client.diffs(session.session_id)
     status = _normalized_status(outcome, final_session)
     failures = _failures_for(status, outcome, final_session)
+    refs = evidence_refs(final_session.session_id, messages, diffs)
     text = final_text(messages)
     metadata = metadata_pairs(
         MetadataInput(
@@ -468,10 +473,49 @@ def _result_from_outcome(
         model_id=None if final_session.model is None else final_session.model.as_text(),
         session_ref=final_session.session_id,
         structured_output=text or None,
-        evidence_refs=evidence_refs(final_session.session_id, messages, diffs),
+        evidence_refs=refs,
         usage=usage_from_session(final_session),
         observed_failures=failures,
         harness_metadata=metadata,
+        failure=_failure_for(status, outcome, final_session, refs),
+    )
+
+
+def _failure_for(
+    status: AgentExecutionStatus,
+    outcome: WaitOutcome,
+    session: SessionInfo,
+    evidence: tuple[str, ...],
+) -> ExecutionFailure | None:
+    if status is AgentExecutionStatus.SUCCEEDED:
+        return None
+    event = outcome.event
+    if status is AgentExecutionStatus.CANCELLED:
+        return ExecutionFailure(
+            category=FailureCategory.CANCELLED,
+            execution_state=ExecutionState.STARTED,
+            evidence=evidence,
+            detail="execution was interrupted",
+        )
+    if event is not None and event.get("type") == "session.execution.failed":
+        return ExecutionFailure(
+            category=FailureCategory.EXECUTION_FAILURE,
+            execution_state=ExecutionState.COMPLETED,
+            evidence=evidence,
+            detail=execution_failure_detail(event),
+        )
+    if session.outcome == "failed":
+        return ExecutionFailure(
+            category=FailureCategory.EXECUTION_FAILURE,
+            execution_state=ExecutionState.COMPLETED,
+            evidence=evidence,
+            detail="session reported a failed outcome without a structured error",
+        )
+    return ExecutionFailure(
+        category=FailureCategory.INVALID_RESULT,
+        execution_state=ExecutionState.UNKNOWN,
+        evidence=evidence,
+        detail=ServerFailureCode.INCOMPLETE_RESULT.value,
     )
 
 
@@ -513,6 +557,7 @@ def failure_result(
     error: OpenCodeServerError,
     session_ref: str | None,
     server_version: str | None,
+    execution_state: ExecutionState | None = None,
 ) -> AgentExecutionResult:
     """Build the neutral failure result for an adapter-level error."""
     metadata: list[tuple[str, str]] = [("adapter", "opencode-server")]
@@ -520,13 +565,19 @@ def failure_result(
         metadata.append(("session_id", session_ref))
     if server_version is not None:
         metadata.append(("server_version", server_version))
+    failure = failure_detail_for(
+        error,
+        session_ref=session_ref,
+        execution_state=execution_state,
+    )
     return AgentExecutionResult(
         status=AgentExecutionStatus.FAILED,
         runtime_identity=identity,
         session_ref=session_ref,
-        evidence_refs=() if session_ref is None else (f"opencode-server:session:{session_ref}",),
+        evidence_refs=failure.evidence,
         observed_failures=(f"{error.code.value}: {redact_secret(error.message)}",),
         harness_metadata=tuple(metadata),
+        failure=failure,
     )
 
 

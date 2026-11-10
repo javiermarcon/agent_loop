@@ -35,6 +35,8 @@ from agent_loop.adapters.opencode_server.runtime import RuntimeOptions
 from agent_loop.domain.capabilities import CapabilitySnapshot
 from agent_loop.domain.capabilities import CapabilityState
 from agent_loop.domain.capabilities import RuntimeInventory
+from agent_loop.domain.faults import ExecutionState
+from agent_loop.domain.faults import FailureCategory
 from agent_loop.ports.agent_runtime import AgentExecutionRequest
 from agent_loop.ports.agent_runtime import DiscoveryContext
 from agent_loop.ports.agent_runtime import ExecutionStrategy
@@ -418,6 +420,10 @@ def test_execute_failure_event_is_not_success(tmp_path: Path) -> None:
     result = _runtime(client).execute(_request(tmp_path))
     assert result.status.value == "failed"
     assert any("boom" in failure for failure in result.observed_failures)
+    assert result.failure is not None
+    assert result.failure.category is FailureCategory.EXECUTION_FAILURE
+    assert result.failure.execution_state is ExecutionState.COMPLETED
+    assert result.failure.evidence
 
 
 def test_execute_interrupted_event_is_cancelled(tmp_path: Path) -> None:
@@ -428,6 +434,9 @@ def test_execute_interrupted_event_is_cancelled(tmp_path: Path) -> None:
     )
     result = _runtime(client).execute(_request(tmp_path))
     assert result.status.value == "cancelled"
+    assert result.failure is not None
+    assert result.failure.category is FailureCategory.CANCELLED
+    assert result.failure.execution_state is ExecutionState.STARTED
 
 
 def test_execute_timeout_interrupts_and_fails(tmp_path: Path) -> None:
@@ -437,6 +446,9 @@ def test_execute_timeout_interrupts_and_fails(tmp_path: Path) -> None:
     assert result.status.value == "failed"
     assert any("execution_timeout" in failure for failure in result.observed_failures)
     assert client.interrupt_calls
+    assert result.failure is not None
+    assert result.failure.category is FailureCategory.TIMEOUT
+    assert result.failure.execution_state is ExecutionState.STARTED
 
 
 def test_execute_cancellation_signal_interrupts_and_cancels(tmp_path: Path) -> None:
@@ -485,6 +497,9 @@ def test_execute_stream_interruption_without_outcome_fails(tmp_path: Path) -> No
     result = _runtime(client).execute(_request(tmp_path))
     assert result.status.value == "failed"
     assert any("stream_interrupted" in failure for failure in result.observed_failures)
+    assert result.failure is not None
+    assert result.failure.category is FailureCategory.EXECUTION_FAILURE
+    assert result.failure.execution_state is ExecutionState.STARTED
 
 
 def test_execute_unsupported_version_fails_before_session(tmp_path: Path) -> None:
@@ -494,6 +509,9 @@ def test_execute_unsupported_version_fails_before_session(tmp_path: Path) -> Non
     assert result.status.value == "failed"
     assert any("unsupported_version" in failure for failure in result.observed_failures)
     assert client.create_calls == []
+    assert result.failure is not None
+    assert result.failure.category is FailureCategory.RUNTIME_UNAVAILABLE
+    assert result.failure.execution_state is ExecutionState.NOT_STARTED
 
 
 def test_execute_authentication_failure_is_neutral(tmp_path: Path) -> None:
@@ -504,6 +522,9 @@ def test_execute_authentication_failure_is_neutral(tmp_path: Path) -> None:
     result = _runtime(client).execute(_request(tmp_path))
     assert result.status.value == "failed"
     assert any("authentication_failed" in failure for failure in result.observed_failures)
+    assert result.failure is not None
+    assert result.failure.category is FailureCategory.AUTHORIZATION_FAILURE
+    assert result.failure.execution_state is ExecutionState.NOT_STARTED
 
 
 def test_execute_error_messages_never_retain_password_patterns(tmp_path: Path) -> None:

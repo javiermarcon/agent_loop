@@ -10,8 +10,16 @@ import pytest
 from agent_loop.adapters.opencode_server.errors import OpenCodeServerError
 from agent_loop.adapters.opencode_server.errors import ServerFailureCode
 from agent_loop.adapters.opencode_server.execution import ExecutionPolicy
+from agent_loop.adapters.opencode_server.execution import WaitOutcome
+from agent_loop.adapters.opencode_server.execution import _failure_for
+from agent_loop.adapters.opencode_server.execution import _notify_started
 from agent_loop.adapters.opencode_server.execution import failure_result
 from agent_loop.adapters.opencode_server.execution import validate_workspace
+from agent_loop.adapters.opencode_server.models import SessionInfo
+from agent_loop.adapters.opencode_server.models import TokenUsage
+from agent_loop.domain.faults import ExecutionState
+from agent_loop.domain.faults import FailureCategory
+from agent_loop.ports.agent_runtime import AgentExecutionStatus
 from agent_loop.ports.agent_runtime import RuntimeIdentity
 
 if TYPE_CHECKING:
@@ -70,3 +78,40 @@ def test_cancel_event_is_a_real_threading_event() -> None:
     policy = ExecutionPolicy(timeout_seconds=1.0, cancel_event=event)
     assert policy.cancel_event is not None
     assert policy.cancel_event.is_set()
+
+
+def test_failure_for_session_failed_without_event() -> None:
+    """A failed session outcome maps to a neutral completed execution failure."""
+    session = SessionInfo("ses_1", "/workspace", None, "failed", TokenUsage(), "t")
+    failure = _failure_for(
+        AgentExecutionStatus.FAILED,
+        WaitOutcome(),
+        session,
+        ("evidence://session",),
+    )
+    assert failure is not None
+    assert failure.category is FailureCategory.EXECUTION_FAILURE
+    assert failure.execution_state is ExecutionState.COMPLETED
+    assert failure.evidence == ("evidence://session",)
+
+
+def test_failure_for_unclassified_failed_status_is_invalid_result() -> None:
+    """A failed status without event or session proof stays invalid/unknown."""
+    session = SessionInfo("ses_1", "/workspace", None, None, TokenUsage(), "t")
+    failure = _failure_for(
+        AgentExecutionStatus.FAILED,
+        WaitOutcome(),
+        session,
+        ("evidence://session",),
+    )
+    assert failure is not None
+    assert failure.category is FailureCategory.INVALID_RESULT
+    assert failure.execution_state is ExecutionState.UNKNOWN
+
+
+def test_notify_started_invokes_observer_only_when_configured() -> None:
+    """Session observers are optional and receive the real session id."""
+    seen: list[str] = []
+    _notify_started(seen.append, "ses_1")
+    _notify_started(None, "ses_1")
+    assert seen == ["ses_1"]
