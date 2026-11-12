@@ -1,7 +1,7 @@
 """Autonomous, target-repository-aware agent-loop runtime.
 
 This package owns discovery, tool execution and the standalone CLI for
-operating Agent Loop against an external Django repository. It must not import
+operating AgentLoop against an external repository. It must not import
 ``scripts``, ``apps`` or Django.
 """
 

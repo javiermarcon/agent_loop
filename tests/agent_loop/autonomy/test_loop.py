@@ -20,6 +20,7 @@ from agent_loop.autonomy.execution.loop import AutonomyRequest
 from agent_loop.autonomy.execution.loop import build_correction_prompt
 from agent_loop.autonomy.execution.runner import ValidationReport
 from agent_loop.autonomy.security import TargetWorkspace
+from agent_loop.autonomy.security import git_environment
 from agent_loop.autonomy.tools.base import ToolContext
 from agent_loop.autonomy.tools.base import ToolResult
 from agent_loop.autonomy.tools.base import ToolStatus
@@ -93,11 +94,18 @@ def _request(  # noqa: PLR0913 - explicit test knobs are clearer than a config o
 
 
 def _commit_all(root: Path) -> None:
-    subprocess.run((git_executable(), "add", "-A"), cwd=root, check=True)  # noqa: S603
+    environment = git_environment()
+    subprocess.run(  # noqa: S603
+        (git_executable(), "add", "-A"),
+        cwd=root,
+        check=True,
+        env=environment,
+    )
     subprocess.run(  # noqa: S603
         (git_executable(), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "init"),
         cwd=root,
         check=True,
+        env=environment,
     )
 
 
@@ -349,6 +357,7 @@ class BranchSwitchingAgent:
             (git_executable(), "checkout", "-q", "-b", "agent-branch"),
             cwd=context.workspace.root,
             check=True,
+            env=git_environment(),
         )
         return AgentRunResult(
             status=ToolStatus.PASS,

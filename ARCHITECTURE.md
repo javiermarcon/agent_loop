@@ -1,172 +1,290 @@
 # ARCHITECTURE
 
-Agent Loop architecture. This section was extracted verbatim from the Shipii
-monorepo during the independent-repository migration; references to host-only
-paths (`scripts/`, `REPO_MAP.md`) describe the historical repository and are not
-part of this distribution.
+AgentLoop is an autonomous execution engine built from two cooperating parts:
 
-## Agent-loop Package Boundaries
+1. **An autonomous target-repository loop** (`agent_loop/autonomy/`) that
+   discovers a repository, prepares an isolated context, invokes an authorized
+   agent command, runs project validations and audits the resulting Git changes.
+2. **A deterministic control plane** (`agent_loop/domain/`,
+   `agent_loop/ports/`, `agent_loop/application/`, `agent_loop/adapters/`) that
+   models capabilities and work, selects a runtime/model from explicit
+   evidence, gates execution requests, classifies failures and bounds recovery.
 
-El tooling de orquestación se implementa en `agent_loop/`, no en la carpeta
-plana `scripts/`. `cli` y los adapters de proveedor apuntan a `application`;
-application coordina `planning`, `quality`, `persistence`, `scope`,
-`semantics` y `discovery`. El dominio es el centro independiente y no puede
-importar Django, subprocess, Git, Docker, CLIs de agentes ni `scripts.*`.
-`agent_loop/domain/capabilities.py` owns the pure effective-capability
-vocabulary (requirements, snapshots, inventory); runtime probing and harness
-adapters must not leak into domain. `agent_loop/domain/task_assessment.py`
-owns deterministic `TaskAssessment` classification and capability-requirement
-derivation from declared task signals (no discovery, no model/harness
-selection). Floors may only raise complexity/risk/uncertainty; `UNKNOWN`
-impact is not treated as absence. `agent_loop/domain/model_profiles.py` owns
-logical `ModelProfile` and runtime-declared `RuntimeModelProfile` associations
-(identity only; no selection, availability, auth, or capability inference).
-`agent_loop/domain/model_profile_catalog.py` owns immutable
-`ModelProfileCatalog` / `RuntimeModelProfileCatalog` (unique logical ids,
-explicit duplicate/conflict rejection, deterministic enumeration; no discovery
-or selection).
-`agent_loop/domain/compatible_candidates.py` owns deterministic
-`resolve_compatible_candidates()`: intersects `TaskAssessment.required_capabilities`
-with `RuntimeInventory` via `is_effective`, gated by catalogs and
-`native_model_ref` inventory membership (no execution, discovery, auth, or
-capability inference).
-`agent_loop/application/execution_routing.py` owns operational S13 selection
-(`select_routing`, `RoutingConstraints`, `RuntimeReadinessPolicy`,
-`RoutingDecision`). It consumes ADR-046 candidates and requires an explicit
-per-runtime readiness capability with mandatory axes (for example supported,
-available, healthy, authorized). `CONFIGURED`/compatibility never implies
-availability; missing policies, missing snapshots, and `UNKNOWN`/`NO` axes
-reject the candidate. Selection is stable by `(runtime_id, profile_id)`, honors
-explicit exclusions/required/forbidden runtimes for recovery escalation, and
-returns the selected runtime/model/strategy plus eligible candidates,
-capability evidence, and rejection reasons. An empty selection is terminal; no
-fallback is invented. Strategy is a control-plane input carried into the
-decision, not inferred from model names (ADR-054).
-`agent_loop/domain/faults.py` owns the neutral S14 failure vocabulary
-(`FailureCategory`, `ExecutionState`, `ExecutionFailure`,
-`FailureClassification`, `classify_failure`). Failure classification is
-provider-neutral: unknown execution state is never recoverable, and a
-non-idempotent operation may not be repeated automatically when execution
-started or effects may exist.
-`agent_loop/application/recovery_policy.py` owns `RecoveryLimits`,
-`RecoveryContext`, `RecoveryAction`, and `decide_recovery`: bounded retry of the
-same combination, model escalation, runtime escalation, human intervention, or
-explicit terminal closure. `agent_loop/application/execution_orchestrator.py`
-owns the bounded control-plane loop (`execute_work_item_with_recovery`) that
-composes S13 routing, the S16 request gate, an injected AgentRuntime, and S14
-recovery. Escalation re-enters S13 with attempted-combination exclusions and
-runtime scope; it never selects a model outside the router. Attempt history
-(routing, request, result, classification, recovery, evidence) is preserved
-in-memory; durable resume/persistence is not part of S14 (ADR-055).
-`agent_loop/domain/work_item.py` owns the control-plane `WorkItem` contract
-(identity, objective, semantic status, opaque external/context refs,
-dependency readiness via `is_schedulable`, execution handoff text); no Notion
-SDK, harness CLI, or MultiRunner coupling.
-`agent_loop/domain/work_item_plan.py` owns deterministic DAG validation
-(`validate_work_item_dag`) and `plan_work_items()` (READY/BLOCKED/DONE with
-sorted pending-dep traceability and data-derived reasons). Completion evidence
-is `WorkItemStatus.DONE` in-plan only—never requests, partial runs, or LLM
-output. Duplicate ids, missing deps, self-deps, and cycles fail closed
-(ADR-049). Planning is not HTTP, not monetary, and not automatic dispatch.
-`agent_loop/application/execution_request_builder.py` owns the application gate
-that builds `AgentExecutionRequest` only for schedulable `WorkItem` values
-(`is_schedulable` + explicit `completed_ids` + `execution_task_text`); it does
-not invoke adapters, rewrite planners, or change `TaskAssessment` semantics.
-It is a frontier for orchestration callers, not a global interception
-of every `AgentExecutionRequest` construction (ADR-048; the S13/S14
-orchestrator is the production consumer).
-`agent_loop/application/planned_execution_requests.py` bridges plan READY ids
-to that builder only; it does not call adapters or mutate WorkItems.
-Static inventory tests may report builder imports/references/invocations
-separately; they do not analyze dataflow to `AgentRuntime.execute` and
-none of those signals alone proves runtime integration.
-S18 boundary audit (ADR-050): `agent_loop/` must not import `scripts`/`apps`/
-`django`; domain/ports stay above adapters; compatibility via
-`resolve_compatible_candidates` alone is not runtime selection or dispatch
-(ADR-054 adds the operational selector). Runtime execution and failure
-escalation are now implemented at the application boundary (ADR-055); Notion
-ingress, durable resume, and quality-evidence closure remain pending.
-Regression tests live under `tests/agent_loop/architecture/`.
-S19 MultiRunner survivor cleanup (ADR-051): the historical MultiRunner is
-`scripts/multi_requirement_mode.py::MultiRequirementModeRunner` (host CLI
-composition + `_al` facade seam). It is not the `agent_loop/` control plane and
-must not absorb WorkItem DAG / request-builder ownership. S19 restores UTF-8
-user-facing Spanish messages and ownership docs without rewiring `_al`, without
-`AgentRuntime.execute` dispatch, and without closing ADR-048/050 E2E gaps.
-(ADR-054/055 later add that dispatch as separate decisions.)
-S20 ProjectProfile & Skills (ADR-052): `agent_loop/project/` owns declarative
-`Skill` / `SkillCatalog`, `ProjectProfile` / `ProjectProfileCatalog`,
-`resolve_skills_for_profile` (fail-closed on missing skill ids), and
-`assess_profile_against_inventory` (per-skill `is_effective` against a
-`RuntimeInventory` snapshot; UNKNOWN/NO never YES; no winner). Incompatibility
-reasons distinguish `capability_absent` from per-axis `axis_no` /
-`axis_unknown` and `no_single_snapshot` when YES is split across duplicate
-snapshots. Collections are copied to tuples. Distinct from
-`ModelProfile` (logical models) and from harness `runtime.skills` discovery.
-Domain must not import `agent_loop.project`; project must not import
-adapters/application/CLI/`scripts`/`apps`/`django`. Shipii command strings and
-Notion labels remain caller-supplied data. Compatibility never implies
-executability; operational routing/dispatch are owned by ADR-054/055, not by
-project profiles.
-`agent_loop/ports/agent_runtime.py` owns
-the minimal AgentRuntime boundary (`discover` / `execute`); harness-internal
-tools stay inside adapters and must not widen that port.
-`agent_loop/adapters/opencode/` implements the OpenCode AgentRuntime via
-read-only CLI discovery (`--version`, `mcp list`, `models --standalone`,
-`debug agents`); it must not call mutating/auth MCP commands or private HTTP
-APIs as a discovery substitute. Parsers distinguish valid empty inventories
-from unreadable stdout (channel-level UNKNOWN). MCP `connected` does not
-imply verified tool health; `(OAuth)` does not imply authorized=YES.
-`agent_loop/adapters/claude/` implements the Claude Code AgentRuntime via
-read-only CLI discovery (`--version`, `auth status --json`, `mcp list`,
-`plugin list`); it must not call login/logout, `mcp add`/`login`, or private
-HTTP APIs as a discovery substitute. Auth JSON is trusted only on successful
-CLI exit. Claude has no verified read-only models inventory CLI in v2.1.283,
-so `models` stays empty and `runtime.models` / `runtime.lsp` /
-`runtime.skills` remain UNKNOWN. MCP empty inventory requires the observed
-empty message; blank stdout or health-header-only (WebSocket-invisible)
-lists are INVALID → channel UNKNOWN. MCP `Connected` does not imply verified
-tool health; pending approval is configured without connected/allowed.
-`agent_loop/adapters/opencode_server/` implements the OpenCode Server
-AgentRuntime (S22) as a separate runtime identity (`opencode-server`,
-capability `runtime.opencode.server`) using the documented public HTTP API and
-SSE events only: `GET /api/info`, `/api/model`, `/api/agent`,
-`POST /api/session`, `/prompt`, `/interrupt`, `/message`, `/diff`, and
-`GET /api/event`. It does not use `experimental.*` endpoints, the browser UI,
-PTY, filesystem-write, or configuration endpoints. Version support is
-fail-closed (major 2, minor >= 2; unknown never supported). Attach mode never
-stops an external server; managed mode starts `opencode serve` on loopback in
-an owned process group and terminates only that group. Discovery never starts
-a process. Execution maps `AgentExecutionRequest` fields without widening
-permissions (restrictive permission rules only; permission asks are rejected),
-keeps one session per execution unless an explicit `session_ref` is reused in
-the same workspace, and normalizes terminal state/evidence/usage into the
-existing port result. `AgentExecutionResult.failure` carries a neutral
-`ExecutionFailure` (category + observed execution state + evidence) so the
-control plane can classify and escalate; the adapter performs no retries and
-owns no recovery policy (S14). Discovery declares `filesystem.read` /
-`filesystem.write` snapshots that follow the observed runtime state, so S11
-task requirements can be evaluated without inferring availability from names.
-S13 consumes the inventory through `resolve_compatible_candidates` and the
-operational selector; no adapter-specific routing exists (ADR-054/055).
-S23 Telemetry (ADR-056): observability is an outbound port, not a domain
-dependency. `agent_loop/ports/telemetry.py` owns immutable events, provenance,
-usage/cost source, and `TelemetrySink`. `agent_loop/telemetry/recorder.py`
-correlates events by execution id, assigns monotonic sequences, redacts and
-bounds attributes, aggregates usage conservatively, and swallows sink failures
-so observability cannot alter execution. `agent_loop/adapters/telemetry/`
-provides only local `InMemoryTelemetrySink`/`NullTelemetrySink`; no external
-service, persistence, queue, API, or dashboard is mandatory. The S13/S14/S16
-loop publishes routing, execution, retry, escalation, failure, and closure
-facts from its real decisions and results. The autonomy loop publishes agent,
-tool, quality, Git-attribution, and closure facts from its observed reports.
-Telemetry never re-runs routing/recovery, never records prompts, requirement or
-objective text, outputs, command lines, provider messages, evidence refs, or
-credentials, and represents unknown costs/tokens as absent rather than zero.
-Event schema and privacy limits are documented in `docs/ai/S23_TELEMETRY.md`.
+AI reasoning is used for interpretation, planning and code changes. Everything
+that can be verified mechanically is handled by deterministic code.
 
-Durante la migración incremental, módulos históricos de `scripts/` pueden ser
-owners todavía no migrados. Un módulo ya migrado conserva únicamente un
-wrapper de identidad; nunca una copia. La fachada
-`agent_loop/application/orchestrator.py` existe para compatibilidad de imports
-y monkeypatches, no como catch-all de lógica.
+The architecture in this document describes the current independent package. It
+does not describe the historical Shipii monorepo layout.
+
+## Repository layout
+
+```text
+agent_loop/
+  __init__.py
+  domain/                    pure contracts and deterministic decisions
+    capabilities.py          capability ids, snapshots, inventory, is_effective
+    task_assessment.py       deterministic task classification
+    model_profiles.py        logical and runtime model bindings
+    model_profile_catalog.py immutable catalogs with conflict rejection
+    compatible_candidates.py declarative candidate resolution
+    work_item.py             control-plane unit of work
+    work_item_plan.py        deterministic DAG validation and planning
+    faults.py                provider-neutral failure vocabulary
+    errors.py, exit_codes.py
+  ports/
+    agent_runtime.py         AgentRuntime discover/execute boundary
+    telemetry.py             TelemetrySink boundary and event schema
+  application/
+    execution_routing.py     S13 operational routing
+    execution_request_builder.py S16 WorkItem request gate
+    planned_execution_requests.py plan-to-request bridge
+    recovery_policy.py       S14 bounded recovery decisions
+    execution_orchestrator.py bounded control-plane loop
+    lifecycle.py             retained lifecycle contracts (not wired to autonomy CLI)
+    resume_*.py              retained resume contracts (not durable storage)
+    state_graph.py           declarative transition graph contracts
+  adapters/
+    opencode/                OpenCode CLI discovery adapter
+    claude/                  Claude Code CLI discovery adapter
+    opencode_server/         OpenCode Server runtime adapter
+    telemetry/               in-memory and null telemetry sinks
+  project/
+    skills.py                declarative Skill/SkillCatalog
+    project_profiles.py      declarative ProjectProfile/ProjectProfileCatalog
+    profile_skill_compatibility.py fail-closed profile assessment
+  telemetry/
+    recorder.py              neutral recorder, redaction, bounds, aggregation
+  agent/
+    providers/               Codex and Cursor command adapters
+  autonomy/
+    __main__.py              python -m agent_loop.autonomy
+    cli.py                   agent-loop console entry point
+    config.py                execution policy and prompt transport
+    security.py              target workspace and environment isolation
+    requirement.py           requirement source and provenance
+    report.py                structured report and Markdown rendering
+    telemetry.py             autonomy-specific telemetry facts
+    discovery/
+      instructions.py        scoped instruction discovery
+      django_project.py      static Django project discovery
+      django_settings.py     static settings resolution
+      compose.py             Compose discovery and selection
+      tools.py               tool inventory
+      tool_config.py         project tool configuration
+      tool_commands.py       documented command discovery
+      git.py                 read-only Git state
+      git_attribution.py     baseline, windows, change attribution
+    tools/
+      base.py                tool contracts and states
+      command.py             process runner and prompt transport
+      registry.py            adapter selection
+      failure.py             failure classification
+      adapters.py            concrete tool adapters
+    execution/
+      environment.py         target interpreter and environment
+      agent.py               external agent invocation
+      runner.py              validation and retry policy
+      loop.py                autonomous discovery/execute/validate loop
+```
+
+## Dependency direction
+
+```text
+domain  <-  ports  <-  application  <-  adapters
+   ^                       ^
+   |                       |
+project ----------------> domain/ports
+
+autonomy  ->  autonomy.discovery / autonomy.tools / autonomy.execution
+autonomy  ->  ports.telemetry
+autonomy  -/-> scripts, apps, django
+```
+
+Hard rules:
+
+- `agent_loop/domain/` cannot import application, adapters, CLI, providers,
+  subprocess, Git, Docker or Django.
+- `agent_loop/ports/` cannot import application, adapters, CLI or providers.
+- `agent_loop/application/` cannot import concrete adapters.
+- `agent_loop/project/` may import pure domain contracts but cannot import
+  application, adapters or CLI.
+- `agent_loop/autonomy/` cannot import `scripts`, `apps` or Django.
+- No part of the package may depend on the Shipii checkout.
+- Target tools run with the target project's environment, never with the
+  AgentLoop interpreter.
+
+These rules are enforced by `tests/agent_loop/architecture/` and by AST import
+audits in the application test suite.
+
+## Entry points
+
+| Entry point | Purpose |
+|---|---|
+| `agent-loop` | Installed console script mapped to `agent_loop.autonomy.cli:main`. |
+| `python -m agent_loop.autonomy` | Module invocation of the same CLI. |
+| `python run.py` | Checkout-local launcher; no installation required. |
+| `agent_loop.autonomy.cli:build_parser` | CLI contract without consuming `sys.argv`. |
+| `agent_loop.application.execution_orchestrator` | Library-level control-plane execution loop. |
+
+There is no second parser or hidden legacy CLI in the package. The old
+multi-requirement parser was removed because none of its options had an
+executable implementation in this distribution.
+
+## Autonomous execution flow
+
+```text
+CLI arguments
+  -> RequirementSource
+  -> TargetWorkspace (normalize, authorize, require Git worktree)
+  -> AutonomyConfig
+  -> AutonomyLoop.run
+       1. discover instructions, Django project, tools and Git state
+       2. build the deterministic prompt
+       3. capture the Git baseline
+       4. invoke the external agent (unless dry-run/discover-only)
+       5. run focused or full validations
+       6. capture Git windows and attribute changes
+       7. decide whether another bounded cycle is allowed
+  -> AutonomyResult
+  -> Markdown or JSON report
+```
+
+Important properties:
+
+- `--discover-only` stops after discovery.
+- `--dry-run` renders the prompt without invoking the agent.
+- `--validate-only` runs validations without an agent.
+- A missing agent command produces an explicit `unavailable` result.
+- A tool that cannot run is never reported as `pass`.
+- `--target-path` normalizes equivalent relative/absolute spellings and rejects
+  paths outside the workspace.
+- Git attribution is post-hoc: changes are classified against captured
+  baselines and windows, but an agent cannot be treated as OS-isolated.
+
+## Control-plane flow
+
+The control plane is a deterministic library pipeline:
+
+```text
+WorkItem
+  -> validate_work_item_dag / plan_work_items
+  -> TaskAssessment
+  -> resolve_compatible_candidates
+  -> select_routing (explicit runtime readiness evidence)
+  -> build_execution_request (schedulable WorkItem gate)
+  -> AgentRuntime.execute
+  -> classify_failure
+  -> decide_recovery (retry, model escalation, runtime escalation,
+                      human intervention or terminal closure)
+  -> telemetry facts
+```
+
+Key invariants:
+
+- `CONFIGURED` capability state or declarative compatibility never implies
+  availability.
+- Missing readiness evidence, missing snapshots and `UNKNOWN`/`NO` axes reject a
+  candidate.
+- Routing is stable by `(runtime_id, profile_id)` and honors explicit
+  exclusions, required runtimes and forbidden runtimes.
+- An empty selection is a valid terminal outcome; no fallback is invented.
+- A non-idempotent operation is not repeated automatically after execution
+  started or effects may exist.
+- Failure classification is provider-neutral and does not live in adapters.
+- Attempt history is kept in memory; durable resume is not part of the
+  control-plane loop.
+
+The control plane is currently a tested library surface. It is not wired into
+the autonomous CLI in this release.
+
+## Runtime adapters
+
+### OpenCode CLI (`adapters/opencode/`)
+
+Read-only discovery through `--version`, `mcp list`, `models --standalone` and
+`debug agents`. It does not call mutating/auth MCP commands or private HTTP
+APIs as a discovery substitute. Parsers distinguish a valid empty inventory
+from unreadable stdout.
+
+### Claude Code CLI (`adapters/claude/`)
+
+Read-only discovery through `--version`, `auth status --json`, `mcp list` and
+`plugin list`. Auth JSON is trusted only after a successful exit. The adapter
+does not call login/logout or mutating MCP commands. When a read-only models
+inventory is unavailable, the inventory stays empty and the corresponding axes
+remain `UNKNOWN`.
+
+### OpenCode Server (`adapters/opencode_server/`)
+
+A separate runtime identity (`opencode-server`) using the documented public
+HTTP/SSE API. It supports attach mode and managed mode on loopback, validates
+version support fail-closed, maps `AgentExecutionRequest` without widening
+permissions, rejects permission asks and does not retry or own recovery policy.
+Discovery never starts a process.
+
+## Capability and project contracts
+
+- `domain/capabilities.py` owns the effective-capability vocabulary.
+- `domain/task_assessment.py` derives capability requirements from declared
+  task signals; floors can only raise complexity, risk or uncertainty.
+- `domain/model_profiles.py` and `model_profile_catalog.py` own logical models
+  and runtime bindings without inferring availability.
+- `domain/compatible_candidates.py` answers what could be compatible.
+- `application/execution_routing.py` answers what may actually be selected now.
+- `project/` owns declarative `ProjectProfile`, `Skill` and fail-closed
+  compatibility assessment. It does not infer executability.
+
+## Telemetry
+
+Telemetry is an outbound port, not a domain dependency.
+
+- `ports/telemetry.py` defines immutable events, provenance, usage/cost sources
+  and the `TelemetrySink` protocol.
+- `telemetry/recorder.py` correlates by execution id, assigns monotonic
+  sequences, redacts and bounds attributes, aggregates usage conservatively and
+  contains sink failures.
+- `adapters/telemetry/` provides only local in-memory and null sinks.
+- The control-plane loop publishes routing, execution, retry, escalation,
+  failure and closure facts from real decisions.
+- The autonomy loop publishes agent, tool, quality, Git-attribution and closure
+  facts from observed reports.
+- Prompts, requirement text, outputs, command lines, evidence references,
+  provider messages and credentials are not recorded.
+- Unknown costs and token counts are absent, never zero.
+
+The schema and privacy rules are documented in `docs/ai/S23_TELEMETRY.md`.
+
+## Historical context
+
+The package was extracted from the Shipii monorepo. Historical modules under
+`scripts/`, host-only `features/agent_loop*.feature` files and the
+`standalone/agent_loop/` vendored copy are **not** part of this architecture.
+Their capabilities are classified in
+`docs/migration/EXCLUDED_LEGACY_CAPABILITIES.md`.
+
+`agent_loop/application/lifecycle.py`, `resume_*` and `state_graph.py` were
+extracted from the legacy lifecycle surface. They are retained as tested
+library contracts but are not used by the autonomous CLI and are not a durable
+resume store. They must not be described as a finished orchestration runtime.
+
+## Testing and quality
+
+- Canonical tests live in `tests/agent_loop/`.
+- Architecture tests enforce package boundaries and forbidden imports.
+- Security tests cover path traversal, symlink escapes, environment isolation
+  and executable resolution.
+- Adapter tests use observed CLI fixtures plus explicit synthetic edge cases.
+- Coverage, Ruff, Ruff format, Mypy and Pylint are configured in
+  `pyproject.toml`.
+- Pre-commit validates staged files, including file syntax, secrets, formatting,
+  architecture boundaries and focused tests. `TESTING.md` documents the three
+  quality levels.
+- `scripts/run_quality_checks.py` runs the file-hygiene hooks over a
+  filesystem-discovered file set, then Ruff, Ruff format, Mypy, Pylint, the
+  architecture tests, the complete suite with the 99% coverage gate, the
+  complete Behave suite, the Git whitespace checks and packaging with isolated
+  installation.
+- CI validates Python 3.12, 3.13 and 3.14, runs the complete quality runner,
+  builds wheel and sdist, verifies `LICENSE` and required package members in
+  both, installs the wheel in an isolated environment, exercises both installed
+  entry points with `--version` and `--help` and runs `pip check`.

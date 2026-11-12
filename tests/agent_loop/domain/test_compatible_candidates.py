@@ -467,7 +467,7 @@ def test_multiple_candidates_are_not_collapsed_to_a_winner() -> None:
 def test_duplicate_inventory_runtime_identity_is_rejected() -> None:
     """Ambiguous inventories for one runtime_id fail closed."""
     profile = _profile()
-    with pytest.raises(ValueError, match="duplicate RuntimeInventory.runtime_identity"):
+    with pytest.raises(ValueError, match=r"duplicate RuntimeInventory\.runtime_identity"):
         resolve_compatible_candidates(
             _assessment(),
             inventories=(

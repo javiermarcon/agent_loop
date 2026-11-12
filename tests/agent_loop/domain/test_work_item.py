@@ -56,7 +56,7 @@ def test_work_item_rejects_blank_required_fields(
     builder: Callable[[], WorkItem],
 ) -> None:
     """Blank identity or objective fail closed."""
-    with pytest.raises(ValueError, match="work_item_id|objective"):
+    with pytest.raises(ValueError, match=r"work_item_id|objective"):
         builder()
 
 

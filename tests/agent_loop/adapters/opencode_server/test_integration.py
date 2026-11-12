@@ -31,7 +31,10 @@ _E2E_ENV = "AGENT_LOOP_E2E_OPENCODE_SERVER"
 _MODEL_ENV = "AGENT_LOOP_OPENCODE_SERVER_MODEL"
 _MAX_EXECUTION_SECONDS = 180
 
-pytestmark = pytest.mark.skipif(_BINARY is None, reason="opencode binary is not installed")
+pytestmark = [
+    pytest.mark.heavy_request,
+    pytest.mark.skipif(_BINARY is None, reason="opencode binary is not installed"),
+]
 
 
 @pytest.fixture

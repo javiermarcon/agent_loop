@@ -454,7 +454,7 @@ def build_prompt(request: AutonomyRequest, discovery: DiscoveryReport) -> str:
     project = discovery.project
     return (
         "# Agent Loop autonomous task\n\n"
-        "You are an autonomous coding agent operating on an external Django repository.\n\n"
+        "You are an autonomous coding agent operating on an external software repository.\n\n"
         "## Requirement\n\n"
         f"{request.requirement.strip()}\n\n"
         f"Requirement source: {request.requirement_source.label if request.requirement_source else 'unspecified'}\n\n"

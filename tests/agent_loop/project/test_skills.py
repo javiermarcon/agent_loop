@@ -27,7 +27,7 @@ def _requirement(
 
 def _skill(
     *,
-    skill_id: str = "shipii.quality.gate",
+    skill_id: str = "sample.quality.gate",
     required: tuple[CapabilityRequirement, ...] | None = None,
 ) -> Skill:
     return Skill(
@@ -39,7 +39,7 @@ def _skill(
 def test_skill_valid_construction() -> None:
     """A skill carries a stable id and declarative capability requirements."""
     skill = _skill()
-    assert skill.skill_id == "shipii.quality.gate"
+    assert skill.skill_id == "sample.quality.gate"
     assert skill.required_capabilities[0].capability_id.value == "filesystem.write"
 
 
@@ -74,11 +74,11 @@ def test_skill_allows_empty_required_capabilities() -> None:
 def test_skill_catalog_get_contains_and_missing() -> None:
     """Catalog lookup is by skill_id; missing ids raise KeyError."""
     quality = _skill()
-    review = _skill(skill_id="shipii.review.checklist", required=())
+    review = _skill(skill_id="sample.review.checklist", required=())
     declared = (review, quality)
     catalog = SkillCatalog.from_skills(declared)
-    assert catalog.get("shipii.quality.gate") == quality
-    assert "shipii.review.checklist" in catalog
+    assert catalog.get("sample.quality.gate") == quality
+    assert "sample.review.checklist" in catalog
     assert len(catalog) == len(declared)
     with pytest.raises(KeyError, match="not found"):
         catalog.get("missing.skill")
@@ -87,7 +87,7 @@ def test_skill_catalog_get_contains_and_missing() -> None:
 def test_skill_catalog_rejects_duplicate_and_conflict() -> None:
     """Exact duplicates and conflicting same-id definitions are rejected."""
     skill = _skill()
-    with pytest.raises(ValueError, match="duplicate Skill.skill_id"):
+    with pytest.raises(ValueError, match=r"duplicate Skill\.skill_id"):
         SkillCatalog.from_skills((skill, skill))
     conflict = _skill(required=())
     with pytest.raises(ValueError, match="conflicting Skill"):
@@ -122,12 +122,12 @@ def test_skills_module_has_no_provider_or_runtime_coupling() -> None:
 
 def test_skill_ids_are_case_sensitive_and_not_folded() -> None:
     """Abuse: distinct spellings remain distinct catalog identities."""
-    lower = _skill(skill_id="shipii.quality", required=())
-    upper = _skill(skill_id="Shipii.Quality", required=())
+    lower = _skill(skill_id="sample.quality", required=())
+    upper = _skill(skill_id="Sample.Quality", required=())
     catalog = SkillCatalog.from_skills((lower, upper))
-    assert catalog.get("shipii.quality") == lower
-    assert catalog.get("Shipii.Quality") == upper
-    assert "SHIPII.QUALITY" not in catalog
+    assert catalog.get("sample.quality") == lower
+    assert catalog.get("Sample.Quality") == upper
+    assert "SAMPLE.QUALITY" not in catalog
 
 
 def test_empty_skill_catalog_membership() -> None:
@@ -157,4 +157,4 @@ def test_skill_catalog_detached_from_mutable_input() -> None:
     catalog = SkillCatalog.from_skills(mutable)
     mutable.clear()
     assert len(catalog) == 1
-    assert catalog.get("shipii.quality.gate") == skill
+    assert catalog.get("sample.quality.gate") == skill

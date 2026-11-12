@@ -1,7 +1,7 @@
 # OpenCode discovery fixtures
 
 - `observed_v2_1_4_*.txt` / `observed_v2_1_4_debug_agents.json`: truncated
-  captures from local OpenCode CLI v2.1.4 (`/home/javier/.opencode/bin/opencode`,
+  captures from a local OpenCode CLI v2.1.4 (`opencode` resolved from `PATH`,
   2026-10-26 / 2026-10-27). Not full dumps.
   - `observed_v2_1_4_models_sample.txt` keeps a short `provider/model` sample
     including one real Ollama tag with `:` (`ollama/gemma3:4b`).

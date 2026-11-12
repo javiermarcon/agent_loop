@@ -268,7 +268,7 @@ def test_resume_configuration_rejects_exit_with_transferred_lock(tmp_path: Path)
     """Reject the legacy combination that would return without releasing ownership."""
     context = _Context(tmp_path, tmp_path, tmp_path)
 
-    with pytest.raises(ValueError, match="terminal exit.*transferred lock"):
+    with pytest.raises(ValueError, match=r"terminal exit.*transferred lock"):
         ResumeConfiguration.from_values(
             _RESUME_EXIT,
             _Lock([]),

@@ -29,7 +29,7 @@ _REFERENCE_WEIGHT = 1
 _PRODUCTION_NAME = "production"
 _DJANGO_HINTS = ("manage.py", "asgi", "wsgi", "gunicorn", "daphne", "uvicorn")
 _SERVICE_NAME_HINTS = ("django", "web", "app")
-_CONTAINER_SERVICE_PATTERN = re.compile(r"^([a-zA-Z0-9_.-]+):\s*$")
+_CONTAINER_SERVICE_PATTERN = re.compile(r"^(?P<indent>[ \t]*)(?P<name>[a-zA-Z0-9_.-]+):\s*(?:#.*)?$")
 _DOCKERFILE_ARG = re.compile(r"^\s*ARG\s+([A-Za-z_][A-Za-z0-9_]*)=([^\s#]+)")
 _DOCKERFILE_WORKDIR = re.compile(r"^\s*WORKDIR\s+([^\s#]+)")
 _DOCKER_VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)")
@@ -244,7 +244,10 @@ def _container_runtime(
 def _services(workspace: TargetWorkspace, selection: tuple[str, ...]) -> tuple[str, ...]:
     names: list[str] = []
     for name in selection:
-        names.extend(_yaml_services(workspace, name))
+        yaml_services = _yaml_services(workspace, name)
+        if yaml_services:
+            names.extend(yaml_services)
+            continue
         names.extend(_text_services(_read_text(_workspace_file(workspace, name))))
     return tuple(dict.fromkeys(names))
 
@@ -273,19 +276,38 @@ def _yaml_data(workspace: TargetWorkspace, name: str) -> dict[str, object]:
 
 
 def _text_services(text: str) -> tuple[str, ...]:
+    """Extract service names from a Compose-like text without inventing keys.
+
+    The scanner is a fallback for configuration that PyYAML cannot parse. It
+    identifies the indentation of the first key below ``services:`` and accepts
+    only sibling keys at that exact level, so nested empty mappings such as
+    ``build:`` or ``ports:`` are not reported as services.
+    """
     names: list[str] = []
     in_services = False
+    services_indent = 0
+    service_indent: int | None = None
     for line in text.splitlines():
-        if line.strip() == "services:":
-            in_services = True
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        if in_services and line and not line.startswith((" ", "\t")):
-            in_services = False
+        indent = len(line) - len(line.lstrip(" \t"))
         if not in_services:
+            if stripped == "services:":
+                in_services = True
+                services_indent = indent
+                service_indent = None
+            continue
+        if indent <= services_indent:
+            in_services = False
+            continue
+        if service_indent is None:
+            service_indent = indent
+        if indent != service_indent:
             continue
         match = _CONTAINER_SERVICE_PATTERN.match(line)
         if match:
-            names.append(match.group(1))
+            names.append(match.group("name"))
     return tuple(names)
 
 

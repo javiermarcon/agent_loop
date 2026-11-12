@@ -203,7 +203,7 @@ def test_resume_configuration_states_are_exclusive() -> None:
     assert transferred.disposition is resume_invocation.ResumeInvocationDisposition.TRANSFERRED
     assert transferred.exit_code is None
     assert transferred.lock is lock
-    with pytest.raises(ValueError, match="terminal exit.*lock"):
+    with pytest.raises(ValueError, match=r"terminal exit.*lock"):
         resume_invocation.ResumeInvocationConfiguration(
             resume_invocation.ResumeInvocationDisposition.TERMINAL,
             _POST_LOCK_EXIT,

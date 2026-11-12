@@ -10,6 +10,7 @@ from agent_loop.autonomy.discovery.tools import ToolInventory
 from agent_loop.autonomy.discovery.tools import ToolKind
 from agent_loop.autonomy.discovery.tools import ToolState
 from agent_loop.autonomy.execution.runner import ValidationRunner
+from agent_loop.autonomy.security import resolve_system_executable
 from agent_loop.autonomy.tools.adapters import GitAdapter
 from agent_loop.autonomy.tools.base import ToolStatus
 from agent_loop.autonomy.tools.command import CommandOutcome
@@ -38,7 +39,9 @@ def test_git_adapter_is_registered_and_read_only(tmp_path: Path) -> None:
     runner = RecordingRunner()
     result = GitAdapter().run(context, runner)
     command = runner.calls[0][0]
-    assert command == ("/usr/bin/git", "status", "--porcelain", "--untracked-files=all")
+    resolved_git = resolve_system_executable(git_executable())
+    assert resolved_git is not None
+    assert command == (str(resolved_git), "status", "--porcelain", "--untracked-files=all")
     assert all(part not in command for part in ("commit", "push", "reset", "checkout", "clean"))
     assert result.status is ToolStatus.PASS
 

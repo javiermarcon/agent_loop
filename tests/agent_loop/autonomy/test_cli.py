@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from agent_loop.autonomy.cli import main
+from agent_loop.autonomy.security import git_environment
 from tests.agent_loop.autonomy.support import git_executable
 from tests.agent_loop.autonomy.support import make_project
 
@@ -31,20 +32,34 @@ def _repository_run_path() -> Path:
 
 
 def _commit_all(root: Path) -> None:
-    subprocess.run((git_executable(), "add", "-A"), cwd=root, check=True)  # noqa: S603
+    environment = git_environment()
+    subprocess.run(  # noqa: S603
+        (git_executable(), "add", "-A"),
+        cwd=root,
+        check=True,
+        env=environment,
+    )
     subprocess.run(  # noqa: S603
         (git_executable(), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "init"),
         cwd=root,
         check=True,
+        env=environment,
     )
 
 
 def _git_local_identity(root: Path) -> None:
-    subprocess.run((git_executable(), "config", "user.name", "Test"), cwd=root, check=True)  # noqa: S603
+    environment = git_environment()
+    subprocess.run(  # noqa: S603
+        (git_executable(), "config", "user.name", "Test"),
+        cwd=root,
+        check=True,
+        env=environment,
+    )
     subprocess.run(  # noqa: S603
         (git_executable(), "config", "user.email", "test@example.com"),
         cwd=root,
         check=True,
+        env=environment,
     )
 
 
@@ -198,7 +213,7 @@ def test_standalone_cli_reports_agent_commit_as_undetermined(tmp_path: Path) -> 
             "--agent-command",
             agent_command,
             "--tool",
-            "pytest",
+            "git",
             "--json",
         ),
         cwd=tmp_path,

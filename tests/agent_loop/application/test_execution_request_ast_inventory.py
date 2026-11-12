@@ -60,22 +60,28 @@ def test_import_binding_respects_python_semantics(
             (True, True, False),
         ),
         (
-            f"from {_BUILDER_MOD} import build_execution_request\n"
-            "build_execution_request(item, completed_ids=(), options=opts)\n",
+            (
+                f"from {_BUILDER_MOD} import build_execution_request\n"
+                "build_execution_request(item, completed_ids=(), options=opts)\n"
+            ),
             _APP_PKG,
             (True, True, True),
         ),
         (
-            f"from {_BUILDER_MOD} import (\n"
-            "    build_execution_request as build_request,\n"
-            ")\n"
-            "build_request(item, completed_ids=(), options=opts)\n",
+            (
+                f"from {_BUILDER_MOD} import (\n"
+                "    build_execution_request as build_request,\n"
+                ")\n"
+                "build_request(item, completed_ids=(), options=opts)\n"
+            ),
             _APP_PKG,
             (True, True, True),
         ),
         (
-            "from .execution_request_builder import build_execution_request\n"
-            "build_execution_request(item, completed_ids=(), options=opts)\n",
+            (
+                "from .execution_request_builder import build_execution_request\n"
+                "build_execution_request(item, completed_ids=(), options=opts)\n"
+            ),
             _APP_PKG,
             (True, True, True),
         ),
@@ -85,9 +91,11 @@ def test_import_binding_respects_python_semantics(
             (True, False, False),
         ),
         (
-            "from . import execution_request_builder\n"
-            "execution_request_builder.build_execution_request("
-            "item, completed_ids=(), options=opts)\n",
+            (
+                "from . import execution_request_builder\n"
+                "execution_request_builder.build_execution_request("
+                "item, completed_ids=(), options=opts)\n"
+            ),
             _APP_PKG,
             (True, True, True),
         ),
@@ -102,9 +110,11 @@ def test_import_binding_respects_python_semantics(
             (True, True, True),
         ),
         (
-            "from agent_loop.application import execution_request_builder\n"
-            "execution_request_builder.build_execution_request("
-            "item, completed_ids=(), options=opts)\n",
+            (
+                "from agent_loop.application import execution_request_builder\n"
+                "execution_request_builder.build_execution_request("
+                "item, completed_ids=(), options=opts)\n"
+            ),
             _APP_PKG,
             (True, True, True),
         ),

@@ -8,7 +8,6 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from dataclasses import field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from agent_loop.autonomy.config import AutonomyConfig
@@ -16,12 +15,14 @@ from agent_loop.autonomy.discovery.django_project import discover_django_project
 from agent_loop.autonomy.discovery.tools import discover_tools
 from agent_loop.autonomy.execution.environment import resolve_environment
 from agent_loop.autonomy.security import TargetWorkspace
+from agent_loop.autonomy.security import git_environment
 from agent_loop.autonomy.tools.base import ToolContext
 from agent_loop.autonomy.tools.command import CommandOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from collections.abc import Sequence
+    from pathlib import Path
 
 PYPROJECT = """\
 [project]
@@ -69,7 +70,13 @@ def make_project(
 ) -> Path:
     """Create a minimal Django-like repository for discovery tests."""
     root.mkdir(parents=True, exist_ok=True)
-    subprocess.run((git_executable(), "init", "-q"), cwd=root, check=True, capture_output=True)  # noqa: S603
+    subprocess.run(  # noqa: S603
+        (git_executable(), "init", "-q"),
+        cwd=root,
+        check=True,
+        capture_output=True,
+        env=git_environment(),
+    )
     write(root / "manage.py", 'import os\nos.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")\n')
     write(
         root / "config" / "settings.py",
@@ -97,7 +104,7 @@ def make_project(
     if venv:
         bin_dir = root / ".venv" / ("Scripts" if os.name == "nt" else "bin")
         bin_dir.mkdir(parents=True, exist_ok=True)
-        write(root / ".venv" / "pyvenv.cfg", f"home = {Path(sys.executable).parent}\n")
+        write(root / ".venv" / "pyvenv.cfg", f"home = {sys.base_prefix}\n")
         executable = bin_dir / ("python.exe" if os.name == "nt" else "python")
         executable.symlink_to(sys.executable)
     return root

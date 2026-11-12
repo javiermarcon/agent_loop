@@ -1,27 +1,72 @@
 minimum_pre_commit_version: "3.7.0"
+default_stages: [pre-commit]
+fail_fast: true
 
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+      - id: check-yaml
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: debug-statements
+      - id: check-builtin-literals
+      - id: detect-private-key
+
   - repo: local
     hooks:
       - id: ruff
         name: ruff
-        entry: ruff check
+        entry: ruff check --fix --exit-non-zero-on-fix
         language: system
         types: [python]
+        files: \.py$
       - id: ruff-format
         name: ruff format
-        entry: ruff format --check
+        entry: ruff format
         language: system
         types: [python]
-      - id: mypy
-        name: mypy
-        entry: mypy agent_loop tests
+        files: \.py$
+      - id: mypy-changed-files
+        name: mypy (changed files)
+        entry: mypy --explicit-package-bases
         language: system
         types: [python]
+        files: \.py$
+      - id: pylint-changed-files
+        name: pylint (changed files)
+        entry: python scripts/pylint_precommit.py
+        language: system
+        types: [python]
+        files: \.py$
+        require_serial: true
+      - id: architecture-boundaries
+        name: architecture boundaries
+        entry: python -m pytest -q tests/agent_loop/architecture
+        language: system
         pass_filenames: false
-      - id: pylint
-        name: pylint
-        entry: pylint agent_loop tests
+        files: ^(agent_loop/|tests/agent_loop/architecture/|pyproject\.toml|\.pre-commit-config\.yaml|conftest\.py|run\.py)
+      - id: pytest-changed-files
+        name: pytest (related tests)
+        entry: python scripts/pytest_precommit.py
         language: system
         types: [python]
+        files: \.py$
+        require_serial: true
+      - id: behave-changed-features
+        name: behave (related features)
+        entry: python scripts/behave_precommit.py
+        language: system
+        files: ^features/.*\.(feature|py)$
+        require_serial: true
+      - id: quality-gate-regression
+        name: quality gate regression tests
+        entry: python -m pytest -q tests/agent_loop/quality
+        language: system
         pass_filenames: false
+        files: ^(scripts/(quality_runtime|run_quality_checks|pylint_precommit|pytest_precommit|behave_precommit)\.py|tests/agent_loop/quality/.*\.py|pyproject\.toml|\.pre-commit-config\.yaml)$

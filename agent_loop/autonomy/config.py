@@ -45,7 +45,6 @@ class AutonomyConfig:
     command_timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS
     max_output_chars: int = DEFAULT_MAX_OUTPUT_CHARS
     target_environment: tuple[tuple[str, str], ...] = ()
-    compose_service: str | None = None
     log_dir: Path | None = None
 
     def __post_init__(self) -> None:

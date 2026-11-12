@@ -29,6 +29,7 @@ TEST_REQUEST_CTORS = frozenset(
     {
         "tests/agent_loop/adapters/claude/test_runtime.py",
         "tests/agent_loop/adapters/opencode/test_runtime.py",
+        "tests/agent_loop/adapters/opencode_server/test_coverage_edges.py",
         "tests/agent_loop/adapters/opencode_server/test_identity.py",
         "tests/agent_loop/adapters/opencode_server/test_integration.py",
         "tests/agent_loop/adapters/opencode_server/test_runtime.py",

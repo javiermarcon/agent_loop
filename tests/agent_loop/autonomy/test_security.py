@@ -23,7 +23,12 @@ def _workspace(tmp_path: Path) -> TargetWorkspace:
 
 
 def _run_git(root: Path, *args: str) -> None:
-    subprocess.run((git_executable(), *args), cwd=root, check=True)  # noqa: S603
+    subprocess.run(  # noqa: S603
+        (git_executable(), *args),
+        cwd=root,
+        check=True,
+        env=git_environment(),
+    )
 
 
 def _commit(root: Path) -> None:

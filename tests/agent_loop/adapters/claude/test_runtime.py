@@ -134,12 +134,12 @@ def test_claude_runtime_satisfies_agent_runtime_protocol() -> None:
 def test_discover_builds_inventory_from_observed_cli_outputs() -> None:
     """Observed version/auth/mcp-empty/plugins-empty become RuntimeInventory."""
     inventory = _runtime(_observed_discovery_cli()).discover(
-        DiscoveryContext(working_directory=_WORKSPACE, project_context="shipii"),
+        DiscoveryContext(working_directory=_WORKSPACE, project_context="sample"),
     )
     assert inventory.runtime_version == "2.1.283"
     assert inventory.adapter_version == ADAPTER_VERSION
     assert inventory.discovered_at == _FIXED_NOW
-    assert inventory.project_context == "shipii"
+    assert inventory.project_context == "sample"
     assert inventory.models == ()
     by_id = {snap.capability_id.value: snap for snap in inventory.capabilities}
     assert by_id["runtime.claude"].available is CapabilityState.YES

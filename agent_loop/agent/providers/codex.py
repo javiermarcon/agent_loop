@@ -9,6 +9,7 @@ from agent_loop.agent.providers import AgentLoopApplication
 from agent_loop.agent.providers import invoke_agent_loop_application
 
 DEFAULT_CODEX_COMMAND = "codex exec"
+CODEX_COMMAND_ENV = "AGENT_LOOP_CODEX_COMMAND"
 
 
 def parse_codex_wrapper_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
@@ -40,7 +41,7 @@ def run_agent_loop(
 def main(argv: list[str], application: AgentLoopApplication) -> int:
     """Forward explicit arguments to the application using Codex."""
     wrapper_args, remaining_argv = parse_codex_wrapper_args(argv)
-    agent_command = os.environ.get("SHIPII_CODEX_COMMAND", DEFAULT_CODEX_COMMAND)
+    agent_command = os.environ.get(CODEX_COMMAND_ENV, DEFAULT_CODEX_COMMAND)
     return run_agent_loop(
         agent_command,
         remaining_argv,

@@ -20,6 +20,7 @@ from agent_loop.application.execution_orchestrator import RoutingInputs
 from agent_loop.application.execution_orchestrator import execute_work_item_with_recovery
 from agent_loop.application.execution_routing import RuntimeReadinessPolicy
 from agent_loop.application.recovery_policy import RecoveryLimits
+from agent_loop.autonomy.security import git_environment
 from agent_loop.domain.capabilities import CapabilityAxis
 from agent_loop.domain.capabilities import CapabilityId
 from agent_loop.domain.capabilities import RuntimeInventory
@@ -50,6 +51,7 @@ _E2E_ENV = "AGENT_LOOP_E2E_OPENCODE_SERVER"
 _MODEL_ENV = "AGENT_LOOP_OPENCODE_SERVER_MODEL"
 
 pytestmark = [
+    pytest.mark.heavy_request,
     pytest.mark.skipif(_BINARY is None, reason="opencode binary is not installed"),
     pytest.mark.skipif(
         os.environ.get(_E2E_ENV) != "1",
@@ -69,6 +71,7 @@ def _git(repo: Path, *args: str) -> None:
         check=True,
         capture_output=True,
         text=True,
+        env=git_environment(),
     )
 
 
@@ -136,7 +139,7 @@ def test_work_item_reaches_opencode_server_and_changes_fixture(tmp_path: Path) -
         assert outcome.final_result.runtime_identity.runtime_id == "opencode-server"
         assert any("calc.py" in ref for ref in outcome.final_result.evidence_refs)
         assert "def multiply" in (repo / "calc.py").read_text(encoding="utf-8")
-        tests = subprocess.run(  # noqa: S603 - fixed pytest argv in a temporary fixture
+        tests = subprocess.run(
             [sys.executable, "-m", "pytest", "-q"],
             cwd=repo,
             check=False,

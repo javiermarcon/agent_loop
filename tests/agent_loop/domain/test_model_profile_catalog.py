@@ -55,7 +55,7 @@ def test_get_missing_profile_raises_key_error() -> None:
 def test_duplicate_identical_profile_id_rejected() -> None:
     """Exact duplicate profile_id entries are rejected, not collapsed."""
     profile = _profile()
-    with pytest.raises(ValueError, match="duplicate ModelProfile.profile_id"):
+    with pytest.raises(ValueError, match=r"duplicate ModelProfile\.profile_id"):
         ModelProfileCatalog.from_profiles((profile, profile))
 
 

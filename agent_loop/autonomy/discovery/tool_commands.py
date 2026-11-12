@@ -19,7 +19,9 @@ _EXEC_COMMAND = re.compile(
     r"\b(?:exec|run)(?:\s+--?[a-zA-Z0-9-]+(?:=[^\s]+)?)*\s+(?:-T\s+)?([a-zA-Z0-9_.-]+)\s+([^\n]+)",
 )
 _PYTHON_MODULE_MIN_PARTS = 3
-_COVERAGE_MIN_PARTS = 5
+_COVERAGE_MIN_PARTS = 4
+_COVERAGE_TOOL_INDEX = 5
+_MODULE_TOOLS = frozenset({"pytest", "mypy", "ruff", "pylint", "bandit"})
 _TOOL_PREFIXES = (
     (("python", "manage.py", "behave"), "behave"),
     (("python3", "manage.py", "behave"), "behave"),
@@ -96,16 +98,22 @@ def _classify(command: tuple[str, ...], service: str) -> tuple[str | None, tuple
 
 
 def _python_module(command: tuple[str, ...]) -> tuple[str | None, tuple[str, ...], None]:
+    """Classify ``python -m <tool>`` and ``python -m coverage run -m <tool>``."""
     if len(command) < _PYTHON_MODULE_MIN_PARTS:
         return None, command, None
     module = command[2]
-    return (module if module in {"pytest", "mypy", "ruff", "pylint", "bandit"} else None), command, None
+    if module == "coverage" and command[3:5] == ("run", "-m"):
+        tool = command[_COVERAGE_TOOL_INDEX] if len(command) > _COVERAGE_TOOL_INDEX else None
+        return (tool if tool in _MODULE_TOOLS else None), command, None
+    return (module if module in _MODULE_TOOLS else None), command, None
 
 
 def _coverage_module(command: tuple[str, ...]) -> tuple[str | None, tuple[str, ...], None]:
-    if len(command) < _COVERAGE_MIN_PARTS or command[3] != "-m":
+    """Classify ``coverage run -m <tool>`` with the real argument positions."""
+    if len(command) < _COVERAGE_MIN_PARTS or command[2] != "-m":
         return None, command, None
-    return ("pytest" if command[4] == "pytest" else None), command, None
+    tool = command[3]
+    return (tool if tool in _MODULE_TOOLS else None), command, None
 
 
 def _read_text(path: Path) -> str:

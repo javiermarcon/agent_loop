@@ -1,10 +1,17 @@
 # ARCHITECTURE_DECISIONS
 
-Agent Loop architectural decisions. ADR-037 through ADR-056 (plus the
-autonomy-era ADR-039 on prompt transport) were extracted verbatim from the
-Shipii monorepo during the independent-repository migration. Evidence paths
-that refer to `scripts/`, `REPO_MAP.md`, or other host-only files document the
-historical repository and are not part of this distribution.
+Agent Loop architectural decisions. ADR-037 through ADR-057 were extracted
+verbatim from the Shipii monorepo during the independent-repository migration.
+ADR-039 (control plane over agent runtimes) and ADR-057 (bounded prompt
+transport) are distinct decisions; the historical duplicate ADR-039 number
+was corrected without changing either decision. Evidence paths that refer to
+`scripts/`, `REPO_MAP.md`, removed legacy modules, or other host-only files
+document the historical repository and are not part of this distribution.
+
+Current modules, commands, quality gates and limitations are documented in
+`README.md`, `TESTING.md` and `ARCHITECTURE.md`. Command names in historical
+ADRs (for example `scripts/run_quality_checks.py --no-act`) describe the Shipii
+host, not this repository.
 
 ## ADR-037: Agent Loop Uses Responsibility Packages and Compatibility Adapters
 
@@ -82,7 +89,11 @@ historical repository and are not part of this distribution.
   - `agent_loop` owns workflow state, durable resume, dependency scheduling,
     capability requirements, strategy/harness/model routing policy, failure
     classification, scope/mutation budgets, authoritative quality policy,
-    WorkItem semantic lifecycle, and DONE.
+    WorkItem semantic lifecycle, and DONE. **Current implementation note:** the
+    independent 0.1.0 distribution retains resume, lifecycle and state-graph
+    contracts as tested library APIs, but does not implement durable resume
+    storage or wire them into the autonomous CLI. See
+    `docs/migration/EXCLUDED_LEGACY_CAPABILITIES.md`.
   - Generative Plan/Build/Review execution, MCP/LSP protocol work, generic
     tool runtimes, and provider APIs belong to AgentRuntime adapters
     (OpenCode, Claude Code, future harnesses), not the core.
@@ -743,43 +754,6 @@ historical repository and are not part of this distribution.
   - `ARCHITECTURE.md` § Agent-loop Package Boundaries
   - `REPO_MAP.md` project entries
 
-## ADR-039: Bounded Prompt Transport and Evidence-Based Target Environments
-
-- Status: Accepted
-- Context: The autonomous runtime built prompts large enough to exceed Linux
-  `MAX_ARG_STRLEN` and appended them as one `argv` entry, so the agent never
-  started. Discovery also treated only four fixed Compose names as configured
-  and fell back to "no virtualenv" for projects whose tools run in containers.
-- Decision:
-  - The prompt is a payload, not a configuration argument. `CommandRunner`
-    streams it through stdin; `PromptTransport.AUTO` uses stdin above a
-    conservative size threshold and preserves positional delivery for small
-    prompts and CLIs that require it. The prompt is never truncated.
-  - Compose selection is evidence-based: standard names, environment variants
-    and documented overrides are candidates; `justfile`, `Makefile`, scripts,
-    CI and documentation identify the selected file. Ties stay ambiguous.
-  - Django settings are resolved statically from `manage.py` literals,
-    variables and cwd branches, using the Compose service working directory as
-    runtime evidence. Installed apps are classified as project, third-party or
-    framework without importing target code.
-  - Tools without a local virtualenv are probed inside the discovered Compose
-    service before being reported available; documented project commands take
-    precedence over invented equivalents. A configuration file alone does not
-    make a tool required when the project neither installs nor invokes it.
-- Consequences: prompts of any size are deliverable, discovery reports the real
-  execution environment, and unavailable/unknown distinctions remain explicit.
-- Evidence: `agent_loop/autonomy/tools/command.py`,
-  `agent_loop/autonomy/execution/agent.py`,
-  `agent_loop/autonomy/discovery/compose.py`,
-  `agent_loop/autonomy/discovery/django_settings.py`,
-  `agent_loop/autonomy/discovery/tool_commands.py`,
-  `agent_loop/autonomy/discovery/tools.py`,
-  `tests/agent_loop/autonomy/test_command.py`,
-  `tests/agent_loop/autonomy/test_agent.py`,
-  `tests/agent_loop/autonomy/test_django_project_compose_evidence.py`,
-  `tests/agent_loop/autonomy/test_django_project_settings.py`,
-  `tests/agent_loop/autonomy/test_tools_container.py`.
-
 ## ADR-053: OpenCode Server Runtime Is a Separate Public-API Adapter (S22)
 
 - Status: Accepted (adapter implemented and E2E-verified; S13 operational
@@ -1009,3 +983,119 @@ historical repository and are not part of this distribution.
   - `tests/agent_loop/adapters/opencode_server/test_e2e_control_plane.py`
   - `ARCHITECTURE.md` § Agent-loop Package Boundaries
   - `REPO_MAP.md` agent_loop application entries
+
+## ADR-056: S23 Telemetry Is an Outbound Port with Evidence-Only Events
+
+- Status: Accepted (implemented for the S13/S14/S16/S22 control loop and the
+  autonomous target-repository loop; durable telemetry persistence remains out
+  of scope)
+- Context: Agent Loop had logs and structured run reports but no neutral,
+  correlateable lifecycle contract. S13 routing, S14 recovery, S16 WorkItem
+  gating, and S22 runtime execution existed, but there was no way to observe a
+  run’s routing choices, attempts, failures, usage, tool outcomes, changes, and
+  final state through one schema. Adding an observability vendor directly to
+  domain/application would couple the control plane to infrastructure and risk
+  re-running routing/recovery logic for “enrichment”.
+- Alternatives considered:
+  - Emit only free-form logs. Rejected: not correlateable, hard to assert, and
+    mixes private payloads with operational facts.
+  - Add a vendor SDK/metrics client to the domain. Rejected: violates the
+    evidence/decoupling boundary and creates an optional external dependency.
+  - Recompute routing/recovery decisions inside a telemetry formatter.
+    Rejected: duplicates S13/S14 and can disagree with the real decision.
+  - Persist telemetry in a new database/queue during S23. Rejected: persistence
+    is not required by the RFC and would add operational surface without a
+    retention/query contract.
+  - Add a typed outbound port plus a neutral recorder and local sinks. Chosen.
+- Decision:
+  - `agent_loop/ports/telemetry.py` owns the immutable event schema:
+    `TelemetryEventName`, `TelemetryEvent`, `TelemetryProvenance`,
+    `TelemetryUsage`, `TelemetryCostSource`, and the `TelemetrySink` protocol.
+    Events correlate by `execution_id` and monotonic `sequence`.
+  - `agent_loop/telemetry/recorder.py` owns `TelemetryRecorder`,
+    `TelemetryFacts`, `TelemetryLimits`, redaction/bounding, best-effort
+    delivery, `usage_from_result`, and `aggregate_usage`. Sink exceptions are
+    contained; telemetry cannot change execution outcome.
+  - `agent_loop/adapters/telemetry/` owns only local sinks:
+    `InMemoryTelemetrySink` (bounded inspection) and `NullTelemetrySink`
+    (disabled). No network, persistence, queue, worker, API, dashboard, or
+    external provider is part of S23.
+  - The S13/S14/S16 control loop records `work_item_received`,
+    `routing_completed`, `execution_started`, `execution_completed`/
+    `execution_failed`, `retry_started`, `escalation_started`, and
+    `work_item_closed` from the real `RoutingDecision`, requests, results,
+    classifications, and recovery decisions. It never re-runs those policies.
+  - The autonomy loop records agent-command execution, `tool_completed`,
+    `quality_completed`, `changes_detected`, and closure from existing
+    `AgentRunResult`, `ToolResult`, `ValidationReport`, and `GitAudit` values.
+  - Observed and inferred facts are separate (`TelemetryProvenance`); current
+    emitters publish observed facts. Unknown token/cost values are `None` and
+    never zero. A run-level aggregate requires complete attempt usage.
+  - Privacy: prompts, requirement/objective text, stdout/stderr, tool/provider
+    messages, command lines, evidence refs, repository content, and credentials
+    are not recorded. Failure events carry only structured category/state.
+    Attribute values are still defensively redacted and bounded.
+  - Telemetry is opt-in by injecting a sink. `None` disables it; limits can set
+    `max_events=0` or bound volume/attribute size.
+- Consequences:
+  - Callers can inspect correlated lifecycle facts without adopting an external
+    service; integrators may inject their own sink.
+  - S13/S14 remain the only routing/recovery owners and S22 remains the only
+    execution owner observed, not reimplemented.
+  - There is no durable telemetry store or query API; resume evidence still
+    comes from existing run reports/persistence.
+  - Tool/quality/change events exist only where the autonomy loop actually
+    observes those facts; the WorkItem control loop does not invent them.
+- Evidence:
+  - `agent_loop/ports/telemetry.py`
+  - `agent_loop/telemetry/recorder.py`
+  - `agent_loop/adapters/telemetry/sinks.py`
+  - `agent_loop/application/execution_orchestrator.py`
+  - `agent_loop/autonomy/telemetry.py`
+  - `agent_loop/autonomy/execution/loop.py`
+  - `tests/agent_loop/ports/test_telemetry.py`
+  - `tests/agent_loop/telemetry/test_recorder.py`
+  - `tests/agent_loop/adapters/telemetry/test_sinks.py`
+  - `tests/agent_loop/application/test_execution_orchestrator_telemetry.py`
+  - `tests/agent_loop/autonomy/test_telemetry.py`
+  - `docs/ai/S23_TELEMETRY.md`
+  - `ARCHITECTURE.md` § Agent-loop Package Boundaries
+  - `REPO_MAP.md` agent_loop entries
+
+
+## ADR-057: Bounded Prompt Transport and Evidence-Based Target Environments
+
+- Status: Accepted
+- Context: The autonomous runtime built prompts large enough to exceed Linux
+  `MAX_ARG_STRLEN` and appended them as one `argv` entry, so the agent never
+  started. Discovery also treated only four fixed Compose names as configured
+  and fell back to "no virtualenv" for projects whose tools run in containers.
+- Decision:
+  - The prompt is a payload, not a configuration argument. `CommandRunner`
+    streams it through stdin; `PromptTransport.AUTO` uses stdin above a
+    conservative size threshold and preserves positional delivery for small
+    prompts and CLIs that require it. The prompt is never truncated.
+  - Compose selection is evidence-based: standard names, environment variants
+    and documented overrides are candidates; `justfile`, `Makefile`, scripts,
+    CI and documentation identify the selected file. Ties stay ambiguous.
+  - Django settings are resolved statically from `manage.py` literals,
+    variables and cwd branches, using the Compose service working directory as
+    runtime evidence. Installed apps are classified as project, third-party or
+    framework without importing target code.
+  - Tools without a local virtualenv are probed inside the discovered Compose
+    service before being reported available; documented project commands take
+    precedence over invented equivalents. A configuration file alone does not
+    make a tool required when the project neither installs nor invokes it.
+- Consequences: prompts of any size are deliverable, discovery reports the real
+  execution environment, and unavailable/unknown distinctions remain explicit.
+- Evidence: `agent_loop/autonomy/tools/command.py`,
+  `agent_loop/autonomy/execution/agent.py`,
+  `agent_loop/autonomy/discovery/compose.py`,
+  `agent_loop/autonomy/discovery/django_settings.py`,
+  `agent_loop/autonomy/discovery/tool_commands.py`,
+  `agent_loop/autonomy/discovery/tools.py`,
+  `tests/agent_loop/autonomy/test_command.py`,
+  `tests/agent_loop/autonomy/test_agent.py`,
+  `tests/agent_loop/autonomy/test_django_project_compose_evidence.py`,
+  `tests/agent_loop/autonomy/test_django_project_settings.py`,
+  `tests/agent_loop/autonomy/test_tools_container.py`.

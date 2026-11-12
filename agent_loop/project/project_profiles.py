@@ -2,7 +2,7 @@
 
 Project profiles carry project-bound configuration identity and the ordered
 set of skill ids they include. They do not embed provider APIs, probe
-runtimes, or execute agents. Shipii-specific command strings belong in
+runtimes, or execute agents. Host-specific command strings belong in
 profile/skill *data*, not in core domain logic (ADR-039 / ADR-052).
 """
 

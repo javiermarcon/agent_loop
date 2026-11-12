@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the autonomous CLI parser without consuming process argv."""
     parser = argparse.ArgumentParser(
         prog="agent-loop",
-        description="Run Agent Loop autonomously against an external Django repository.",
+        description="Run AgentLoop autonomously against an external software repository.",
     )
     parser.add_argument("--repo", required=True, help="Path to the target Git repository.")
     source = parser.add_mutually_exclusive_group(required=True)
@@ -84,7 +84,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Repository path for instruction scope and Git audit scope; may be repeated.",
     )
     parser.add_argument("--env", action="append", default=[], metavar="KEY=VALUE", help="Explicit target env var.")
-    parser.add_argument("--compose-service", help="Reserved compose service name for future execution.")
     parser.add_argument("--log-dir", help="Directory for prompt and result artifacts.")
     parser.add_argument("--version", action="version", version=__version__)
     return parser
@@ -181,7 +180,6 @@ def _build_config(args: argparse.Namespace) -> AutonomyConfig:
         command_timeout_seconds=int(args.timeout_seconds),
         max_output_chars=int(args.max_output_chars),
         target_environment=environment,
-        compose_service=args.compose_service,
         log_dir=log_dir,
     )
 

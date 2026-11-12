@@ -10,6 +10,7 @@ from agent_loop.autonomy.discovery.git import discover_git
 from agent_loop.autonomy.discovery.git_attribution import ChangeAttribution
 from agent_loop.autonomy.discovery.git_attribution import audit_git_changes
 from agent_loop.autonomy.security import TargetWorkspace
+from agent_loop.autonomy.security import git_environment
 from tests.agent_loop.autonomy.support import git_executable
 
 if TYPE_CHECKING:
@@ -24,7 +25,12 @@ def _repo(tmp_path: Path) -> Path:
 
 
 def _git(root: Path, *args: str) -> None:
-    subprocess.run((git_executable(), *args), cwd=root, check=True)  # noqa: S603
+    subprocess.run(  # noqa: S603
+        (git_executable(), *args),
+        cwd=root,
+        check=True,
+        env=git_environment(),
+    )
 
 
 def _write(root: Path, name: str, content: str) -> None:

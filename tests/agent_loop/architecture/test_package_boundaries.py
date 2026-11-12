@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import tomllib
 from datetime import UTC
 from datetime import datetime
 from pathlib import Path
@@ -478,3 +479,12 @@ def test_domain_does_not_import_project_profiles_or_skills() -> None:
     for path in sorted(domain_root.rglob("*.py")):
         offenders.extend(_offender_lines(path, ("agent_loop.project",)))
     assert offenders == []
+
+
+def test_autonomy_cli_is_the_only_console_entry_point() -> None:
+    """The installed console script targets the autonomy CLI, not a legacy parser."""
+    repository_root = Path(__file__).resolve().parents[3]
+    configuration = tomllib.loads((repository_root / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert configuration["project"]["scripts"] == {"agent-loop": "agent_loop.autonomy.cli:main"}
+    assert not (_PACKAGE_ROOT / "cli").exists()

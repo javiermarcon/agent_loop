@@ -13,8 +13,8 @@ from agent_loop.project.project_profiles import ProjectProfileCatalog
 
 def _profile(
     *,
-    profile_id: str = "shipii.default",
-    skill_ids: tuple[str, ...] = ("shipii.quality.gate",),
+    profile_id: str = "sample.default",
+    skill_ids: tuple[str, ...] = ("sample.quality.gate",),
 ) -> ProjectProfile:
     return ProjectProfile(profile_id=profile_id, skill_ids=skill_ids)
 
@@ -22,8 +22,8 @@ def _profile(
 def test_project_profile_valid_construction() -> None:
     """A project profile declares identity and ordered skill references."""
     profile = _profile()
-    assert profile.profile_id == "shipii.default"
-    assert profile.skill_ids == ("shipii.quality.gate",)
+    assert profile.profile_id == "sample.default"
+    assert profile.skill_ids == ("sample.quality.gate",)
 
 
 @pytest.mark.parametrize("profile_id", ["", "   "])
@@ -78,7 +78,7 @@ def test_project_profile_catalog_get_contains_missing_and_order() -> None:
 def test_project_profile_catalog_rejects_duplicate_and_conflict() -> None:
     """Exact duplicates and conflicting same-id definitions are rejected."""
     profile = _profile()
-    with pytest.raises(ValueError, match="duplicate ProjectProfile.profile_id"):
+    with pytest.raises(ValueError, match=r"duplicate ProjectProfile\.profile_id"):
         ProjectProfileCatalog.from_profiles((profile, profile))
     conflict = _profile(skill_ids=())
     with pytest.raises(ValueError, match="conflicting ProjectProfile"):
@@ -105,12 +105,12 @@ def test_project_profiles_module_has_no_provider_coupling() -> None:
 
 def test_project_profile_ids_are_case_sensitive() -> None:
     """Abuse: profile_id case variants are distinct, never silently merged."""
-    lower = _profile(profile_id="shipii.default", skill_ids=())
-    mixed = _profile(profile_id="Shipii.Default", skill_ids=())
+    lower = _profile(profile_id="sample.default", skill_ids=())
+    mixed = _profile(profile_id="Sample.Default", skill_ids=())
     catalog = ProjectProfileCatalog.from_profiles((lower, mixed))
-    assert "shipii.default" in catalog
-    assert "Shipii.Default" in catalog
-    assert "SHIPII.DEFAULT" not in catalog
+    assert "sample.default" in catalog
+    assert "Sample.Default" in catalog
+    assert "SAMPLE.DEFAULT" not in catalog
 
 
 def test_project_profile_is_not_a_model_profile() -> None:
@@ -139,4 +139,4 @@ def test_project_profile_catalog_detached_from_mutable_input() -> None:
     catalog = ProjectProfileCatalog.from_profiles(mutable)
     mutable.clear()
     assert len(catalog) == 1
-    assert catalog.get("shipii.default") == profile
+    assert catalog.get("sample.default") == profile

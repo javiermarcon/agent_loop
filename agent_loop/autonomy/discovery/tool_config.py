@@ -85,7 +85,10 @@ def _dependency_text(workspace: TargetWorkspace, name: str) -> str:
     if isinstance(poetry, dict):
         dependencies = poetry.get("poetry")
         if isinstance(dependencies, dict):
-            strings.extend(_toml_strings(dependencies.get("dependencies")))
+            declared = dependencies.get("dependencies")
+            if isinstance(declared, dict):
+                strings.extend(str(key) for key in declared)
+            strings.extend(_toml_strings(declared))
     return "\n".join(strings)
 
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from agent_loop.application.resume_compatibility import ResumeCompatibilityDecision
 
-type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
 type ResumeHistoryEntry = dict[str, JsonValue]
 
 _KNOWN_MIGRATIONS = {

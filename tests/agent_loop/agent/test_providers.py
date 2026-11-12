@@ -88,7 +88,7 @@ def test_codex_main_uses_explicit_argv_and_application(
 ) -> None:
     """Codex resolves its command without consulting process argv."""
     application = _RecordingApplication([EXPECTED_FORWARDING_EXIT_CODE])
-    monkeypatch.setenv("SHIPII_CODEX_COMMAND", "custom codex")
+    monkeypatch.setenv("AGENT_LOOP_CODEX_COMMAND", "custom codex")
 
     result = codex.main(
         ["--commit_msg", "fix: exact", "--requirement", "x"],
@@ -102,6 +102,70 @@ def test_codex_main_uses_explicit_argv_and_application(
             "custom codex",
             "--commit_msg",
             "fix: exact",
+            "--requirement",
+            "x",
+        ),
+    ]
+
+
+def test_codex_ignores_legacy_shipii_command_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the product-owned environment variable configures the provider."""
+    application = _RecordingApplication([EXPECTED_FORWARDING_EXIT_CODE])
+    monkeypatch.delenv(codex.CODEX_COMMAND_ENV, raising=False)
+    monkeypatch.setenv("SHIPII_CODEX_COMMAND", "legacy codex")
+
+    result = codex.main(["--requirement", "x"], application)
+
+    assert result == EXPECTED_FORWARDING_EXIT_CODE
+    assert application.calls == [("--agent-command", codex.DEFAULT_CODEX_COMMAND, "--requirement", "x")]
+
+
+def test_cursor_uses_product_environment_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cursor configuration comes from AGENT_LOOP_* variables only."""
+    application = _RecordingApplication([EXPECTED_FORWARDING_EXIT_CODE])
+    monkeypatch.delenv(cursor.CURSOR_COMMAND_ENV, raising=False)
+    monkeypatch.setenv(cursor.CURSOR_MODEL_ENV, "gpt-5")
+    monkeypatch.setenv(cursor.CURSOR_MODE_ENV, "plan")
+    monkeypatch.setenv("SHIPII_CURSOR_MODEL", "legacy-model")
+
+    result = cursor.main(["--requirement", "x"], application)
+
+    assert result == EXPECTED_FORWARDING_EXIT_CODE
+    assert application.calls == [
+        (
+            "--agent-command",
+            f"{cursor.DEFAULT_CURSOR_COMMAND} --mode plan --model gpt-5",
+            "--requirement",
+            "x",
+        ),
+    ]
+
+
+def test_cursor_ignores_legacy_shipii_model_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A legacy SHIPII_* value does not silently configure Cursor."""
+    application = _RecordingApplication([EXPECTED_FORWARDING_EXIT_CODE])
+    for name in (
+        cursor.CURSOR_COMMAND_ENV,
+        cursor.CURSOR_MODEL_ENV,
+        cursor.CURSOR_MODE_ENV,
+        cursor.CURSOR_AUTO_FALLBACK_MODEL_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SHIPII_CURSOR_MODEL", "legacy-model")
+
+    result = cursor.main(["--requirement", "x"], application)
+
+    assert result == EXPECTED_FORWARDING_EXIT_CODE
+    assert application.calls == [
+        (
+            "--agent-command",
+            cursor.DEFAULT_CURSOR_COMMAND,
             "--requirement",
             "x",
         ),
