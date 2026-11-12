@@ -12,6 +12,8 @@ jobs:
   quality-gate:
     name: Complete quality gate (Python 3.14)
     runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,17 +22,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - name: Install project and pinned tools
+      - name: Install pinned tools
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
-          python -m pip install -e .
       - name: Run the integral quality runner
+        env:
+          # Keep parallel acts/jobs from sharing one coverage data file.
+          COVERAGE_FILE: ${{ runner.temp }}/.coverage
         run: python scripts/run_quality_checks.py
 
   tests:
     name: Tests and coverage (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -40,12 +46,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install project and pinned tools
+      - name: Install pinned tools
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
-          python -m pip install -e .
       - name: Complete pytest suite with the 99% gate
+        env:
+          # Keep matrix jobs from sharing one coverage data file under act.
+          COVERAGE_FILE: ${{ runner.temp }}/.coverage
         run: pytest tests/agent_loop --cov=agent_loop --cov-report=term-missing --cov-fail-under=99
 
   package:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -65,6 +66,7 @@ def test_plan_covers_the_complete_repository_not_changed_files(tmp_path: Path) -
     assert "--cov=agent_loop" in pytest_argv
     assert "--cov-fail-under=99" in pytest_argv
     assert "tests/agent_loop" in pytest_argv
+    assert by_name["pytest-full"].env["COVERAGE_FILE"].startswith(tempfile.gettempdir())
     assert by_name["behave-e2e"].argv[-1] == "features"
     assert by_name["mypy"].argv[-7:] == (
         "agent_loop",

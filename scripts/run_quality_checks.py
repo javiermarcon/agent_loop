@@ -154,10 +154,16 @@ def _command_gate(
     scope: str,
     argv: Sequence[str],
     *,
-    required: bool = True,
     timeout_seconds: float = ANALYSIS_TIMEOUT_SECONDS,
+    env: Mapping[str, str] | None = None,
 ) -> GateSpec:
-    return GateSpec(name=name, scope=scope, argv=tuple(argv), required=required, timeout_seconds=timeout_seconds)
+    return GateSpec(
+        name=name,
+        scope=scope,
+        argv=tuple(argv),
+        timeout_seconds=timeout_seconds,
+        env=dict(env or {}),
+    )
 
 
 def build_gate_plan(*, python: str, repo_root: Path) -> tuple[GateSpec, ...]:
@@ -214,6 +220,11 @@ def build_gate_plan(*, python: str, repo_root: Path) -> tuple[GateSpec, ...]:
                     f"--cov-fail-under={COVERAGE_THRESHOLD:g}",
                 ),
                 timeout_seconds=PYTEST_TIMEOUT_SECONDS,
+                env={
+                    "COVERAGE_FILE": str(
+                        Path(tempfile.gettempdir()) / f"agent-loop-coverage-{os.getpid()}.data",
+                    ),
+                },
             ),
             _command_gate(
                 "behave-e2e",
